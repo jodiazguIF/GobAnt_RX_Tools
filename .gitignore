@@ -205,3 +205,12 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+#Credentials 
+credentials_editoria.json
+credentials_google_drive.json
+token_drive.json
+
+#Not desired folders
+Revision_Licencias
+Credentials
