@@ -86,6 +86,9 @@ def extraer_datos_con_genai(texto_licencia):
     - Renovación
     - Corrección
 
+    En caso de que el tipo de solicitud sea Modificación Razón Social o Representante legal o de Modificación
+    de OPR/EPR, dejar los datos del equipo en blanco (null).
+
     MARCAS: De ser posible elige de la siguiente lista:
     - ACCURAY
     - AJEX MEDITECH
@@ -149,6 +152,8 @@ def extraer_datos_con_genai(texto_licencia):
     - VARIAN
     - VATECH
 
+    En caso de no ser capaz de elegir, dejar como "REVISAR"
+
     Encargado del control de calidad: De ser posible elige de la siguiente lista:
     - Pimédica S.A
     - Sievert SAS
@@ -165,6 +170,8 @@ def extraer_datos_con_genai(texto_licencia):
     - Germán Ramírez
     - Físico Médico
     - Control Calidad SA
+
+    En caso de no ser capaz de elegir, dejar como "REVISAR"
 
     tipo de equipo: De ser posible elige de la siguiente lista:
     - PERIAPICAL
@@ -217,8 +224,10 @@ def extraer_datos_con_genai(texto_licencia):
     Está mal hecho, pues el tipo de equipo y la categoría no coinciden.
     El tipo de equipo y la categorían deben coincidir.
 
+
     Devuelve la respuesta estrictamente en formato JSON, sin ningún texto adicional, usando las siguientes claves:
     {{
+      "NOMBRE":"Vanessa P.",
       "RADICADO": "",
       "FECHA": "",
       "NOMBRE O RAZON SOCIAL": "",
@@ -277,6 +286,9 @@ def extraer_datos_con_genai(texto_licencia):
         print(f"Error al extraer datos con GenAI: {e}")
         return None
 
+
+
+'''
 if __name__ == '__main__':
     # Este bloque solo se ejecuta si corres este archivo directamente
     # Puedes poner aquí un texto de ejemplo para probar la función
@@ -291,3 +303,4 @@ if __name__ == '__main__':
             json.dump(datos_extraidos, f, ensure_ascii=False, indent=2)
     else:
         print("No se pudieron extraer los datos del texto de ejemplo.")
+'''

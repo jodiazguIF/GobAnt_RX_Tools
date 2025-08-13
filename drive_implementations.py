@@ -35,19 +35,6 @@ def obtener_servicio_drive():
         with open('token_drive.json', 'w') as token:
             token.write(creds.to_json())
     return build('drive', 'v3', credentials=creds)
-
-def leer_y_extraer_texto(ruta_archivo):
-    """
-    Lee un archivo .docx y extrae todo el texto de sus párrafos.
-    (Esta es la misma función del paso anterior)
-    """
-    try:
-        doc = docx.Document(ruta_archivo)
-        texto_completo = [parrafo.text for parrafo in doc.paragraphs]
-        return "\n".join(texto_completo)
-    except Exception as e:
-        print(f"Error al leer el archivo: {e}")
-        return None
     
 def descargar_archivos_de_drive(servicio, nombre_carpeta_drive):
     """
