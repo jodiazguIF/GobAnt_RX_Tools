@@ -7,38 +7,24 @@ from google import genai  # paquete google-genai (pip install google-genai)
 
 # NOTA: Todas las llaves del JSON del prompt están ESCAPADAS con {{ }}
 PROMPT_TEMPLATE = """\
-Extrae la siguiente información del texto de la licencia de rayos X que te doy a continuación:
-- Radicado
-- Fecha (Formato de las fechas: día/mes/año)
-- Nombre o Razón Social
-- Nit o CC
-- Sede (si no hay, dejar en blanco)
-- Dirección
-- Subregión
-- correo electrónico del solicitante
-- tipo de solicitud
-- tipo de equipo
-- categoría de licencia
-En cuanto a los equipos de rayos X:
-Del equipo de rayos X:
-- fecha de fabricación
-- marca
-- modelo
-- serie
-Del tubo de Rayos X
-- marca
-- modelo
-- serie
-- fecha de fabricación
-Siguiendo con la información del texto:
-- control calidad
-- fecha de control calidad
+Extrae la siguiente información del texto de la licencia de rayos X que te doy a continuación.
+Formato de fechas: día/mes/año (dd/mm/aaaa). Respeta mayúsculas/acentos exactamente como se listan.
 
-En caso de que el nombre o razón social sea relativo a EMPRESA SOCIAL DEL ESTADO, se debe abreviar por ESE, de igual forma,
-para Instituciones Prestadoras de Servicios de Salud, se debe abreviar por IPS
+Alcance:
+1) Metadatos de la licencia (una vez por documento).
+2) Equipos asociados a la licencia (0..N) → devolver SIEMPRE una lista `EQUIPOS` con un objeto por equipo.
+   - Si solo existe un equipo, `EQUIPOS` debe contener 1 objeto.
+   - Cada objeto de `EQUIPOS` incluye la información del equipo y de su tubo.
 
-Ten en cuenta que para los siguientes apartados solo se puede escoger entre los siguientes valores:
-SUBREGIÓN: Elige de la siguiente lista:
+Reglas de normalización:
+- Abreviar “EMPRESA SOCIAL DEL ESTADO” → ESE; “Instituciones Prestadoras de Servicios de Salud” → IPS.
+- Si un dato del tubo o de serie no aparece, usar exactamente "NO REGISTRA" (mayúsculas).
+- Si no puedes identificar el ente de control de calidad, usar "REVISAR".
+- Para `SUBREGIÓN`, `MUNICIPIO`, `TIPO DE SOLICITUD`, `TIPO DE EQUIPO`, `CATEGORÍA`, elegir estrictamente de las listas provistas.
+- En control de calidad, prioriza la última fecha explícita si aparecen varias.
+
+Listas permitidas
+SUBREGIÓN:
 - BAJO CAUCA
 - MAGDALENA MEDIO
 - NORDESTE
@@ -49,7 +35,7 @@ SUBREGIÓN: Elige de la siguiente lista:
 - URABÁ
 - VALLE DE ABURRÁ
 
-MUNICIPIO: Elige de la siguiente lista:
+MUNICIPIO:
 - CÁCERES, CAUCASIA, EL BAGRE, NECHÍ, TARAZÁ, ZARAGOZA
 - CARACOLÍ, MACEO, PUERTO BERRÍO, PUERTO NARE, PUERTO TRIUNFO, YONDÓ
 - AMALFI, ANORÍ, CISNEROS, REMEDIOS, SAN ROQUE, SANTO DOMINGO, SEGOVIA, VEGACHÍ, YALÍ, YOLOMBÓ
@@ -60,7 +46,7 @@ MUNICIPIO: Elige de la siguiente lista:
 - APARTADÓ, ARBOLETES, CAREPA, CHIGORODÓ, MURINDÓ, MUTATA, NECOCLÍ, SAN JUAN DE URABÁ, SAN PEDRO DE URABÁ, TURBO, VIGÍA DEL FUERTE
 - BARBOSA, BELLO, CALDAS, COPACABANA, ENVIGADO, GIRARDOTA, ITAGÜÍ, LA ESTRELLA, MEDELLÍN, SABANETA
 
-TIPO DE SOLICITUD: Elige de la siguiente lista:
+TIPO DE SOLICITUD:
 - Primera vez
 - Modificación OPR/EPR
 - Modificación cambio tubo
@@ -68,159 +54,66 @@ TIPO DE SOLICITUD: Elige de la siguiente lista:
 - Renovación
 - Corrección
 
-En caso de que el tipo de solicitud sea Modificación Razón Social o Representante legal o de Modificación
-de OPR/EPR, dejar los datos del equipo en blanco (null).
+MARCAS (preferente; si no, transcribe la del texto):
+- ACCURAY, AJEX MEDITECH, AMERICAN X RAY, AMERICOMP, AMRAD, ARDET, BELMONT,
+  BIOMEDICAL INTERNATIONAL, BLUE X IMAGING, CANON, CARESTREAM, DENTAL SAN JUSTO,
+  DENTAL XRAY, DRGEM, DÜRR DENTAL, EAGLE, ELEKTA, FIAD, FUJIFILM CORPORATION,
+  GENDEX, GENERAL ELECTRIC, GENORAY, GNATUS, GÖTZEN, GTR LABS, CIAS, HITACHI,
+  HOLOGIC, IAE S.p.A, IMAGING SCIENCES INTERNATIONAL LLC, IMS GIOTTO, INSTRUMENTARIUM DENTAL,
+  J. MORITA, KODAK, L3 COMMUNICATIONS, LARDENT, LUNAR, METALTRÓNICA, MINXRAY,
+  OLYMPIA, OXFORD, PANPASS, PHILIPS, PLANMECA, POSKOM, PROBIOMEDYC, QUANTUM MEDICAL IMAGING,
+  RAPISCAN, RTR, SHIMADZU, SIEMENS, SIN DATO, SIRONA, SMITHS DETECTION, TOSHIBA,
+  TROPHY, TXR TINGLE, UNIVERSAL, VAREX IMAGING, VARIAN, VATECH
 
-MARCAS: De ser posible elige de la siguiente lista:
-- ACCURAY
-- AJEX MEDITECH
-- AMERICAN X RAY
-- AMERICOMP
-- AMRAD
-- ARDET
-- BELMONT
-- BIOMEDICAL INTERNATIONAL
-- BLUE X IMAGING
-- CANON
-- CARESTREAM
-- DENTAL SAN JUSTO
-- DENTAL XRAY
-- DRGEM
-- DÜRR DENTAL
-- EAGLE
-- ELEKTA
-- FIAD
-- FUJIFILM CORPORATION
-- GENDEX
-- GENERAL ELECTRIC
-- GENORAY
-- GNATUS
-- GÖTZEN
-- GTR LABS
-- CIAS
-- HITACHI
-- HOLOGIC
-- IAE S.p.A
-- IMAGING SCIENCES INTERNATIONAL LLC
-- IMS GIOTTO
-- INSTRUMENTARIUM DENTAL
-- J. MORITA
-- KODAK
-- L3 COMMUNICATIONS
-- LARDENT
-- LUNAR
-- METALTRÓNICA
-- MINXRAY
-- OLYMPIA
-- OXFORD
-- PANPASS
-- PHILIPS
-- PLANMECA
-- POSKOM
-- PROBIOMEDYC
-- QUANTUM MEDICAL IMAGING
-- RAPISCAN
-- RTR
-- SHIMADZU
-- SIEMENS
-- SIN DATO
-- SIRONA
-- SMITHS DETECTION
-- TOSHIBA
-- TROPHY
-- TXR TINGLE
-- UNIVERSAL
-- VAREX IMAGING
-- VARIAN
-- VATECH
+Entes de control de calidad (preferente; si no, "REVISAR"):
+- Pimédica S.A, Sievert SAS, Alara SAS, León Moncada, UNAL, PSO, Jairo Poveda, Rad Solutions,
+  Ubaldo Nerio Reynel, REI, Gabriel Murcia, Germán Ramírez, Físico Médico, Control Calidad SA
+(“REI” = Radioprotección e Ingeniería S.A.S.)
+Debe existir una línea del tipo: “Control de calidad realizado por: <ente> el <fecha>”.
 
-En caso de no ser capaz de elegir, dejar como "REVISAR"
+TIPO DE EQUIPO (lista cerrada):
+- PERIAPICAL, PERIAPICAL PORTÁTIL, PANORÁMICO, TOMÓGRAFO ODONTOLÓGICO, DENSITÓMETRO,
+  CONVENCIONAL, RX PORTÁTIL, ARCO EN C, MAMÓGRAFO, TOMÓGRAFO, MULTIPROPÓSITO, FLUOROSCOPIO,
+  ANGIÓGRAFO, ACELERADOR LINEAL, PET-CT, SPECT-CT, RADIOCIRUGÍA ROBÓTICA, INDUSTRIAL BAJA COMPLEJIDAD,
+  INDUSTRIAL ALTA COMPLEJIDAD, INVESTIGACIÓN, VETERINARIO
 
-Encargado del control de calidad: De ser posible elige de la siguiente lista:
-- Pimédica S.A
-- Sievert SAS
-- Alara SAS
-- León Moncada
-- UNAL
-- RadProct
-- PSO
-- Jairo Poveda
-- Rad Solutions
-- Ubaldo Nerio Reynel
-- REI
-- Gabriel Murcia
-- Germán Ramírez
-- Físico Médico
-- Control Calidad SA
+Categoría de licencia (lista cerrada):
+- I ODONTOLÓGICO, II ODONTOLÓGICO, I MÉDICO, II MÉDICO, I INDUSTRIAL, II INDUSTRIAL, II INVESTIGACIÓN, II VETERINARIO
 
-En caso de no ser capaz de elegir, dejar como "REVISAR"
 
-tipo de equipo: De ser posible elige de la siguiente lista:
-- PERIAPICAL
-- PERIAPICAL PORTÁTIL
-- PANORÁMICO
-- TOMÓGRAFO ODONTOLÓGICO
-- DENSITÓMETRO
-- CONVENCIONAL
-- RX PORTÁTIL
-- ARCO EN C
-- MAMÓGRAFO
-- TOMÓGRAFO
-- MULTIPROPÓSITO
-- FLUOROSCOPIO
-- ANGIÓGRAFO
-- ACELERADOR LINEAL
-- PET-CT
-- SPECT-CT
-- RADIOCIRUGÍA ROBÓTICA
-- INDUSTRIAL BAJA COMPLEJIDAD
-- INDUSTRIAL ALTA COMPLEJIDAD
-- INVESTIGACIÓN
-- VETERINARIO
+En caso de no tener información sobre el tubo de RX, dejar como: NO REGISTRA
+Salida obligatoria:
+- Devuelve **exclusivamente** un JSON válido, sin texto adicional.
+- Estructura:
 
-Categoría de licencia: Elige estrictamente uno de la siguiente lista:
-- I ODONTOLÓGICO
-- II ODONTOLÓGICO
-- I MÉDICO
-- II MÉDICO
-- I INDUSTRIAL
-- II INDUSTRIAL
-- II INVESTIGACIÓN
-- II VETERINARIO
-
-No incluyas ningún texto fuera del JSON. 
-Es estrictamente necesario incluir el tipo de equipo y la categoría de la licencia en el JSON,
-estas claves deben ir en:
-tipo de equipo -> "TIPO DE EQUIPO"
-categoría de la licencia -> "CATEGORIA"
-fecha del control de calidad -> "FECHA CC"
-El tipo de equipo y la categoría deben ser coherentes.
-
-Devuelve la respuesta estrictamente en formato JSON, sin ningún texto adicional, usando las siguientes claves:
 {{
-  "NOMBRE":"Vanessa P.",
+  "ELABORA": "VANESSA P.",
   "RADICADO": "",
   "FECHA": "",
-  "NOMBRE O RAZON SOCIAL": "",
+  "NOMBRE O RAZÓN SOCIAL": "",
   "NIT O CC": "",
   "SEDE": "",
-  "DIRECCION": "",
-  "SUBREGION": "",
+  "DIRECCIÓN": "",
+  "SUBREGIÓN": "",
   "MUNICIPIO": "",
-  "CORREO ELECTRONICO": "",
+  "CORREO ELECTRÓNICO": "",
   "TIPO DE SOLICITUD": "",
-  "TIPO DE EQUIPO": "",
-  "CATEGORIA": "",
-  "FECHA DE FABRICACION": "",
-  "MARCA": "",
-  "MODELO": "",
-  "SERIE": "",
-  "MARCA TUBO RX": "",
-  "MODELO TUBO RX": "",
-  "SERIE TUBO RX": "",
-  "CONTROL CALIDAD": "",
-  "FECHA CC": "",
-  "OBSERVACIONES": ""
+  "CATEGORÍA": "",
+  "OBSERVACIONES": "",
+  "EQUIPOS": [
+    {{
+      "TIPO DE EQUIPO": "",
+      "FECHA DE FABRICACIÓN": "",
+      "MARCA": "",
+      "MODELO": "",
+      "SERIE": "",
+      "MARCA TUBO RX": "",
+      "MODELO TUBO RX": "",
+      "SERIE TUBO RX": "",
+      "CONTROL CALIDAD": "",
+      "FECHA CC": ""
+    }}
+  ]
 }}
 
 Texto de la licencia:
@@ -228,6 +121,7 @@ Texto de la licencia:
 {texto}
 ---
 """
+
 
 def _clean_quotes(s: str) -> str:
     # comillas “inteligentes” → ascii

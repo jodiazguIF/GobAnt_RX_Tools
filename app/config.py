@@ -25,7 +25,7 @@ class Settings:
     # Columnas de la hoja
     col_radicado: str = os.environ.get("COL_RADICADO", "RADICADO")
     col_obs: str = os.environ.get("COL_OBS", "OBSERVACIONES")
-    col_archivo: str = os.environ.get("COL_ARCHIVO", "Archivo")
+    col_archivo: str = os.environ.get("COL_ARCHIVO", "ARCHIVO")
     col_updated: str = os.environ.get("COL_UPDATED", "Última actualización")
 
 settings = Settings()
