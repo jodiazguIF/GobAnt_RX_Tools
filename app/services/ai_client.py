@@ -22,6 +22,13 @@ Reglas de normalización:
 - Si no puedes identificar el ente de control de calidad, usar "REVISAR".
 - Para `SUBREGIÓN`, `MUNICIPIO`, `TIPO DE SOLICITUD`, `TIPO DE EQUIPO`, `CATEGORÍA`, elegir estrictamente de las listas provistas.
 - En control de calidad, prioriza la última fecha explícita si aparecen varias.
+- En caso de no tener información sobre el tubo de RX, dejar como: NO REGISTRA, recordar que en caso de que el tipo de solicitud sea MODIFICACIÓN OPR/EPR
+o MODIFICACIÓN RAZÓN SOCIAL O REPRESENTANTE, se deben dejar en blanco (null) los espacios de los equipos. También se deja en (null) CONTROL DE CALIDAD y FECHA CC
+- Fecha CC hace referencia a la fecha en que se llevó a cabo el control de calidad. Normalmente viene dado por:
+El control de calidad fue realizado por: [Nombre del ente] el [Fecha]
+- En caso de que exista una sección de DATOS A MODIFICAR, revisar qué elemento se encuentran en esa sección, normalmente se encuentra el tubo de rayos x
+y sus datos, para que sea más claro que en este caso se debe poner Modificación cambio tubo
+
 
 Listas permitidas
 SUBREGIÓN:
@@ -80,8 +87,6 @@ TIPO DE EQUIPO (lista cerrada):
 Categoría de licencia (lista cerrada):
 - I ODONTOLÓGICO, II ODONTOLÓGICO, I MÉDICO, II MÉDICO, I INDUSTRIAL, II INDUSTRIAL, II INVESTIGACIÓN, II VETERINARIO
 
-
-En caso de no tener información sobre el tubo de RX, dejar como: NO REGISTRA
 Salida obligatoria:
 - Devuelve **exclusivamente** un JSON válido, sin texto adicional.
 - Estructura:

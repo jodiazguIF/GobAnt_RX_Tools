@@ -59,6 +59,20 @@ class IngestPipeline:
             except Exception as e:
                 print(f"[ERROR] {f.get('name')}: {e}")
 
+    def process_folder_only_new(self) -> None:
+        """Procesa la carpeta ignorando archivos que ya tengan cache."""
+        files = self.drive.list_docx_in_folder(settings.drive_folder_id)
+        if not files:
+            print("No se encontraron .docx en la carpeta.")
+            return
+        print(f"Se encontraron {len(files)} archivo(s).")
+        for f in files:
+            try:
+                # Si ya existe cache local, process_one omite subida a Sheets
+                self.process_one(f["id"], f["name"], skip_sheet_if_cached=True)
+            except Exception as e:
+                print(f"[ERROR] {f.get('name')}: {e}")
+
     def _ensure_equipos_array(self, data: Dict[str, Any]) -> None:
         """
         Normaliza 'data' para que siempre tenga EQUIPOS: List[Dict[str, Any]].
