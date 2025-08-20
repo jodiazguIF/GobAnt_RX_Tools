@@ -1,4 +1,4 @@
-# GobAnt_RX_Tools - Web App IA (Drive → IA → JSON → Google Sheets)
+# GobAnt_RX_Tools - Web App IA
 
 Pipeline en Python que:
 
