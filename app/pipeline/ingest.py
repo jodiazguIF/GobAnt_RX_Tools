@@ -92,7 +92,6 @@ class IngestPipeline:
             return
         print(f"Se encontraron {len(files)} archivo(s).")
         for f in files:
-            time.sleep(2)  # Evitar rate limit de Google Drive
             try:
                 file_id, filename = f["id"], f["name"]
                 radicado: Optional[str] = None

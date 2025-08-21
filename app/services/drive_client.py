@@ -2,6 +2,7 @@ from typing import List, Dict, Any
 from googleapiclient.http import MediaIoBaseDownload
 import io
 from docx import Document
+import time 
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -26,13 +27,28 @@ class DriveClient:
                 break
         return files
 
-    def download_docx_text(self, file_id: str) -> str:
-        request = self.drive.files().get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-        fh.seek(0)
-        doc = Document(fh)
-        return "\n".join(p.text for p in doc.paragraphs)
+    def download_docx_text(self, file_id: str, retries: int = 3, backoff: int = 2) -> str:
+        """Descarga un docx desde Drive y retorna su contenido de texto.
+
+        Realiza reintentos exponenciales ante errores de conexión para
+        manejar cierres abruptos de la conexión como WinError 10054.
+        """
+        for attempt in range(retries):
+            try:
+                request = self.drive.files().get_media(fileId=file_id)
+                fh = io.BytesIO()
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                fh.seek(0)
+                doc = Document(fh)
+                return "\n".join(p.text for p in doc.paragraphs)
+            except Exception as e:  # noqa: BLE001
+                if attempt == retries - 1:
+                    raise
+                wait = backoff ** attempt
+                print(
+                    f"[WARN] Falla al descargar {file_id}: {e}. Reintentando en {wait}s"
+                )
+                time.sleep(wait)
