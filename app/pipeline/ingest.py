@@ -1,6 +1,8 @@
 # app/services/ingest.py
 import os
 import json
+import glob
+import time
 from typing import Dict, Any, Optional, List
 from app.config import settings
 from app.services.google_auth import get_credentials, build_clients
@@ -45,6 +47,12 @@ class IngestPipeline:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
         return path
+
+    def _has_cache_for_file(self, file_id: str) -> bool:
+        '''Revisa si existe un JSON local para el file_id dado.'''
+        prefix = file_id[:8]
+        pattern = os.path.join(settings.out_dir, f"*__{prefix}.json")
+        return bool(glob.glob(pattern))
     # -------------------------------------------------------------------------------
 
     def process_folder(self) -> None:
@@ -60,7 +68,7 @@ class IngestPipeline:
                 print(f"[ERROR] {f.get('name')}: {e}")
 
     def process_folder_only_new(self) -> None:
-        """Procesa la carpeta ignorando archivos que ya tengan cache."""
+        """Procesa solo los archivos que aún no tengan cache local."""
         files = self.drive.list_docx_in_folder(settings.drive_folder_id)
         if not files:
             print("No se encontraron .docx en la carpeta.")
@@ -68,8 +76,52 @@ class IngestPipeline:
         print(f"Se encontraron {len(files)} archivo(s).")
         for f in files:
             try:
-                # Si ya existe cache local, process_one omite subida a Sheets
-                self.process_one(f["id"], f["name"], skip_sheet_if_cached=True)
+                if self._has_cache_for_file(f["id"]):
+                    print(f"→ Cache encontrado, se omite: {f['name']} ({f['id']})")
+                    continue
+                self.process_one(f["id"], f["name"])
+            except Exception as e:
+                print(f"[ERROR] {f.get('name')}: {e}")
+
+    def process_folder_only_pending(self) -> None:
+        """Procesa únicamente archivos cuyo radicado no tenga aún información en la
+        columna de observaciones (ETIQUETA IA) en la hoja."""
+        files = self.drive.list_docx_in_folder(settings.drive_folder_id)
+        if not files:
+            print("No se encontraron .docx en la carpeta.")
+            return
+        print(f"Se encontraron {len(files)} archivo(s).")
+        for f in files:
+            time.sleep(2)  # Evitar rate limit de Google Drive
+            try:
+                file_id, filename = f["id"], f["name"]
+                radicado: Optional[str] = None
+                # Intentar obtener el radicado desde el cache local
+                prefix = file_id[:8]
+                pattern = os.path.join(settings.out_dir, f"*__{prefix}.json")
+                matches = glob.glob(pattern)
+                if matches:
+                    try:
+                        with open(matches[0], "r", encoding="utf-8") as fp:
+                            cached = json.load(fp)
+                        radicado = str(cached.get("RADICADO") or cached.get("radicado") or "").strip() or None
+                    except Exception:
+                        radicado = None
+                # Fallback: radicado en el nombre del archivo
+                if not radicado:
+                    radicado = rad.extract_from_filename(filename)
+                # Fallback final: extraer del contenido
+                if not radicado:
+                    text = self.drive.download_docx_text(file_id)
+                    radicado = rad.extract_from_text(text)
+
+                if radicado and self.sheets.has_value_in_column(
+                    settings.col_radicado, radicado, settings.col_obs
+                ):
+                    print(f"→ Ya subido, se omite: {filename} ({radicado})")
+                    continue
+
+                self.process_one(file_id, filename)
             except Exception as e:
                 print(f"[ERROR] {f.get('name')}: {e}")
 
@@ -123,7 +175,7 @@ class IngestPipeline:
             rows.append(row)
         return rows
 
-    def process_one(self, file_id: str, filename: str) -> None:
+    def process_one(self, file_id: str, filename: str, skip_sheet_if_cached: bool = False) -> None:
         print(f"→ Procesando: {filename} ({file_id})")
         text = self.drive.download_docx_text(file_id)
 
@@ -141,6 +193,9 @@ class IngestPipeline:
             data = self.ai.summarize(text)
         else:
             print(f"   Cache JSON encontrado para {radicado} ({filename}). Omitiendo IA.")
+            if skip_sheet_if_cached:
+                print("   Omitiendo subida a Sheets por cache existente.")
+                return
 
         # 3) Normalizaciones mínimas de licencia
         if "Radicado" in data and "RADICADO" not in data:

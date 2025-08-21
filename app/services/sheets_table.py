@@ -1,6 +1,8 @@
 # app/services/sheets_table.py
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+import time
+from googleapiclient.errors import HttpError
 
 class SheetsTable:
     def __init__(self, sheets_service, spreadsheet_id: str, sheet_name: str):
@@ -17,12 +19,31 @@ class SheetsTable:
             n, r = divmod(n - 1, 26)
             s = chr(65 + r) + s
         return s
+    def _execute_with_backoff(
+        self, request, retries: int = 5, initial_delay: float = 1.0
+    ):
+        """Execute a Sheets API request with exponential backoff on 429 errors."""
+        delay = initial_delay
+        for attempt in range(retries):
+            try:
+                return request.execute()
+            except HttpError as e:
+                if e.resp.status == 429 and attempt < retries - 1:
+                    time.sleep(delay)
+                    delay *= 2
+                else:
+                    raise
 
     def _load_headers(self):
         rng = f"{self.sheet_name}!1:1"
         resp = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id, range=rng
         ).execute()
+        resp = self._execute_with_backoff(
+            self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id, range=rng
+            )
+        )
         row = resp.get("values", [[]])
         self.headers = [h.strip() for h in row[0]] if row and row[0] else []
 
@@ -34,7 +55,18 @@ class SheetsTable:
             )
 
     # ------- Búsquedas y utilidades de bloque por RADICADO -------
-
+    def has_value_in_column(self, key_col: str, key_value: str, target_col: str) -> bool:
+        """Verifica si alguna fila del bloque identificado por `key_col`/`key_value`
+        tiene contenido no vacío en `target_col`."""
+        if target_col not in self.headers:
+            return False
+        rows = self._find_rows_by_key(key_col, key_value)
+        for row_num in rows:
+            row = self._get_row_as_dict(row_num)
+            if str(row.get(target_col, "")).strip() != "":
+                return True
+        return False
+    
     def _find_rows_by_key(self, key_col: str, key_value: str, start_row: int = 2) -> List[int]:
         if key_col not in self.headers:
             raise ValueError(f"Columna clave '{key_col}' no existe")
@@ -44,6 +76,11 @@ class SheetsTable:
         resp = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id, range=rng
         ).execute()
+        resp = self._execute_with_backoff(
+            self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id, range=rng
+            )
+        )
         rows = resp.get("values", [])
         matches: List[int] = []
         for i, row in enumerate(rows):
@@ -52,12 +89,18 @@ class SheetsTable:
                 matches.append(start_row + i)
         return matches
 
+
     def _get_row_as_dict(self, row_num: int) -> Dict[str, Any]:
         last_col = self._num_to_col(len(self.headers))
         rng = f"{self.sheet_name}!A{row_num}:{last_col}{row_num}"
         resp = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id, range=rng
         ).execute()
+        resp = self._execute_with_backoff(
+            self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id, range=rng
+            )
+        )
         arr = resp.get("values", [[]])
         vals = arr[0] if arr and arr[0] else []
         vals += [""] * (len(self.headers) - len(vals))
@@ -161,6 +204,14 @@ class SheetsTable:
             valueInputOption="USER_ENTERED",
             body={"values": values},
         ).execute()
+        self._execute_with_backoff(
+            self.service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=rng,
+                valueInputOption="USER_ENTERED",
+                body={"values": values},
+            )
+        )
 
     def _append_row_from_dict(self, row_dict: Dict[str, Any]):
         rng = f"{self.sheet_name}!A1:{self._num_to_col(len(self.headers))}1"
@@ -172,6 +223,15 @@ class SheetsTable:
             insertDataOption="INSERT_ROWS",
             body={"values": values},
         ).execute()
+        self._execute_with_backoff(
+            self.service.spreadsheets().values().append(
+                spreadsheetId=self.spreadsheet_id,
+                range=rng,
+                valueInputOption="USER_ENTERED",
+                insertDataOption="INSERT_ROWS",
+                body={"values": values},
+            )
+        )
 
     # ------- API principal -------
 
@@ -274,6 +334,11 @@ class SheetsTable:
                     resp = self.service.spreadsheets().values().get(
                         spreadsheetId=self.spreadsheet_id, range=rng
                     ).execute()
+                    resp = self._execute_with_backoff(
+                        self.service.spreadsheets().values().get(
+                            spreadsheetId=self.spreadsheet_id, range=rng
+                        )
+                    )
                     vals = resp.get("values", [[]])
                     vals = vals[0] if vals and vals[0] else []
                     # Consideramos vacía si ninguna de las columnas de encabezado tiene valor
