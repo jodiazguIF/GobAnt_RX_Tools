@@ -241,6 +241,7 @@ class IngestPipeline:
                     "MARCA TUBO RX": "MARCA TUBO RX",
                     "MODELO TUBO RX": "MODELO TUBO RX",
                     "SERIE TUBO RX": "SERIE TUBO RX",
+                    "FECHA FABRICACIÓN TUBO RX": "FECHA FABRICACIÓN TUBO RX",
                     "CONTROL CALIDAD": "CONTROL CALIDAD",
                     "FECHA CC": "FECHA CC",
                     "OBSERVACIONES": "OBSERVACIONES",

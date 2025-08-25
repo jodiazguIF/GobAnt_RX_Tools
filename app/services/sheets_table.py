@@ -2,6 +2,7 @@
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import time
+import random
 from googleapiclient.errors import HttpError
 
 class SheetsTable:
@@ -10,6 +11,8 @@ class SheetsTable:
         self.spreadsheet_id = spreadsheet_id
         self.sheet_name = sheet_name
         self.headers: List[str] = []
+        # Cache simple para evitar lecturas repetidas del mismo rango
+        self._cache: Dict[str, Any] = {}
         self._load_headers()
 
     @staticmethod
@@ -20,30 +23,42 @@ class SheetsTable:
             s = chr(65 + r) + s
         return s
     def _execute_with_backoff(
-        self, request, retries: int = 5, initial_delay: float = 1.0
+        self,
+        request,
+        retries: int = 5,
+        initial_delay: float = 1.0,
+        throttle: float = 1.0,
     ):
-        """Execute a Sheets API request with exponential backoff on 429 errors."""
+        """Ejecuta una petición al API con backoff exponencial y "throttling" básico."""
         delay = initial_delay
         for attempt in range(retries):
             try:
+                # Pausa para no saturar el límite de 60 req/min
+                time.sleep(throttle + random.uniform(0, throttle))
                 return request.execute()
             except HttpError as e:
                 if e.resp.status == 429 and attempt < retries - 1:
-                    time.sleep(delay)
+                    # Espera exponencial con un poco de jitter
+                    time.sleep(delay + random.uniform(0, delay))
                     delay *= 2
                 else:
                     raise
 
-    def _load_headers(self):
-        rng = f"{self.sheet_name}!1:1"
-        resp = self.service.spreadsheets().values().get(
-            spreadsheetId=self.spreadsheet_id, range=rng
-        ).execute()
+    def _get_range(self, rng: str) -> Dict[str, Any]:
+        """Obtiene un rango de forma cacheada."""
+        if rng in self._cache:
+            return self._cache[rng]
         resp = self._execute_with_backoff(
             self.service.spreadsheets().values().get(
                 spreadsheetId=self.spreadsheet_id, range=rng
             )
         )
+        self._cache[rng] = resp
+        return resp
+
+    def _load_headers(self):
+        rng = f"{self.sheet_name}!1:1"
+        resp = self._get_range(rng)
         row = resp.get("values", [[]])
         self.headers = [h.strip() for h in row[0]] if row and row[0] else []
 
@@ -61,26 +76,20 @@ class SheetsTable:
         if target_col not in self.headers:
             return False
         rows = self._find_rows_by_key(key_col, key_value)
+        rows_data = self._get_rows_as_dicts(rows)
         for row_num in rows:
-            row = self._get_row_as_dict(row_num)
+            row = rows_data.get(row_num, {})
             if str(row.get(target_col, "")).strip() != "":
                 return True
         return False
-    
+
     def _find_rows_by_key(self, key_col: str, key_value: str, start_row: int = 2) -> List[int]:
         if key_col not in self.headers:
             raise ValueError(f"Columna clave '{key_col}' no existe")
         col_idx = self.headers.index(key_col) + 1
         col_letter = self._num_to_col(col_idx)
         rng = f"{self.sheet_name}!{col_letter}{start_row}:{col_letter}"
-        resp = self.service.spreadsheets().values().get(
-            spreadsheetId=self.spreadsheet_id, range=rng
-        ).execute()
-        resp = self._execute_with_backoff(
-            self.service.spreadsheets().values().get(
-                spreadsheetId=self.spreadsheet_id, range=rng
-            )
-        )
+        resp = self._get_range(rng)
         rows = resp.get("values", [])
         matches: List[int] = []
         for i, row in enumerate(rows):
@@ -93,18 +102,34 @@ class SheetsTable:
     def _get_row_as_dict(self, row_num: int) -> Dict[str, Any]:
         last_col = self._num_to_col(len(self.headers))
         rng = f"{self.sheet_name}!A{row_num}:{last_col}{row_num}"
-        resp = self.service.spreadsheets().values().get(
-            spreadsheetId=self.spreadsheet_id, range=rng
-        ).execute()
-        resp = self._execute_with_backoff(
-            self.service.spreadsheets().values().get(
-                spreadsheetId=self.spreadsheet_id, range=rng
-            )
-        )
+        resp = self._get_range(rng)
         arr = resp.get("values", [[]])
         vals = arr[0] if arr and arr[0] else []
         vals += [""] * (len(self.headers) - len(vals))
         return {h: vals[i] for i, h in enumerate(self.headers)}
+
+    def _get_rows_as_dicts(self, row_nums: List[int]) -> Dict[int, Dict[str, Any]]:
+        """Obtiene varias filas en una sola llamada usando batchGet."""
+        if not row_nums:
+            return {}
+        last_col = self._num_to_col(len(self.headers))
+        ranges = [f"{self.sheet_name}!A{r}:{last_col}{r}" for r in row_nums]
+        resp = self._execute_with_backoff(
+            self.service.spreadsheets().values().batchGet(
+                spreadsheetId=self.spreadsheet_id, ranges=ranges
+            )
+        )
+        rows_dict: Dict[int, Dict[str, Any]] = {}
+        value_ranges = resp.get("valueRanges", [])
+        for r, v in zip(row_nums, value_ranges):
+            rng = v.get("range")
+            arr = v.get("values", [[]])
+            vals = arr[0] if arr and arr[0] else []
+            vals += [""] * (len(self.headers) - len(vals))
+            rows_dict[r] = {h: vals[i] for i, h in enumerate(self.headers)}
+            if rng:
+                self._cache[rng] = {"values": [vals]}
+        return rows_dict
 
     def _is_row_empty(self, row_num: int) -> bool:
         row = self._get_row_as_dict(row_num)
@@ -123,10 +148,11 @@ class SheetsTable:
         candidates = self._find_rows_by_key(primary_col, primary_value, start_row)
         if not candidates:
             return None
+        rows_data = self._get_rows_as_dicts(candidates)
         if not extra_keys:
             return candidates[0]
         for row_num in candidates:
-            row = self._get_row_as_dict(row_num)
+            row = rows_data.get(row_num, {})
             ok = True
             for col, val in extra_keys.items():
                 if col not in self.headers:
@@ -154,21 +180,23 @@ class SheetsTable:
         candidates = self._find_rows_by_key(rad_col, rad_value, start_row)
         if not candidates:
             return None
+        rows_data = self._get_rows_as_dicts(candidates)
 
         prefer_missing_cols = {"SERIE", "SERIE TUBO RX"}
+
         def is_empty(v: Any) -> bool:
             s = str(v or "").strip()
             return s == "" or s.upper() in {"NO REGISTRA", "NO REGISTRADA", "NO APLICA"}
 
         # Prioriza filas con series vacías
         for row_num in candidates:
-            row = self._get_row_as_dict(row_num)
+            row = rows_data.get(row_num, {})
             if any((c in self.headers) and is_empty(row.get(c, "")) for c in prefer_missing_cols):
                 return row_num
 
         # Si no, usa heurística de vacíos general
         for row_num in candidates:
-            row = self._get_row_as_dict(row_num)
+            row = rows_data.get(row_num, {})
             empties = 0
             total = 0
             for col in to_apply.keys():
@@ -198,12 +226,6 @@ class SheetsTable:
         last_col = self._num_to_col(len(self.headers))
         rng = f"{self.sheet_name}!A{row_num}:{last_col}{row_num}"
         values = [[row_dict.get(h, "") for h in self.headers]]
-        self.service.spreadsheets().values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=rng,
-            valueInputOption="USER_ENTERED",
-            body={"values": values},
-        ).execute()
         self._execute_with_backoff(
             self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
@@ -212,17 +234,12 @@ class SheetsTable:
                 body={"values": values},
             )
         )
+        # Invalidar cache para reflejar los nuevos datos
+        self._cache.clear()
 
     def _append_row_from_dict(self, row_dict: Dict[str, Any]):
         rng = f"{self.sheet_name}!A1:{self._num_to_col(len(self.headers))}1"
         values = [[row_dict.get(h, "") for h in self.headers]]
-        self.service.spreadsheets().values().append(
-            spreadsheetId=self.spreadsheet_id,
-            range=rng,
-            valueInputOption="USER_ENTERED",
-            insertDataOption="INSERT_ROWS",
-            body={"values": values},
-        ).execute()
         self._execute_with_backoff(
             self.service.spreadsheets().values().append(
                 spreadsheetId=self.spreadsheet_id,
@@ -232,6 +249,8 @@ class SheetsTable:
                 body={"values": values},
             )
         )
+        # Invalidar cache después de insertar nuevas filas
+        self._cache.clear()
 
     # ------- API principal -------
 
@@ -294,9 +313,10 @@ class SheetsTable:
                 s = _norm(x)
                 return s == "" or s.upper() in {"NO REGISTRA", "NO REGISTRADA", "NO APLICA"}
 
+            rows_data = self._get_rows_as_dicts(candidates)
             reuse_candidate: Optional[int] = None
             for r in candidates:
-                row = self._get_row_as_dict(r)
+                row = rows_data.get(r, {})
                 # Preferencia: serie(s) vacías
                 if ("SERIE" in self.headers and is_empty_value(row.get("SERIE"))) or \
                    ("SERIE TUBO RX" in self.headers and is_empty_value(row.get("SERIE TUBO RX"))):
@@ -305,7 +325,7 @@ class SheetsTable:
             if reuse_candidate is None:
                 # Heurística: si ≥3 de los campos destino están vacíos, reutiliza
                 for r in candidates:
-                    row = self._get_row_as_dict(r)
+                    row = rows_data.get(r, {})
                     empties = 0
                     total = 0
                     for col in to_apply.keys():
@@ -328,21 +348,8 @@ class SheetsTable:
                 probe = max(candidates) + 1
                 # Avanza por todas las filas vacías consecutivas disponibles
                 while True:
-                    # Obtiene toda la fila y verifica si está completamente vacía
-                    last_col = self._num_to_col(len(self.headers))
-                    rng = f"{self.sheet_name}!A{probe}:{last_col}{probe}"
-                    resp = self.service.spreadsheets().values().get(
-                        spreadsheetId=self.spreadsheet_id, range=rng
-                    ).execute()
-                    resp = self._execute_with_backoff(
-                        self.service.spreadsheets().values().get(
-                            spreadsheetId=self.spreadsheet_id, range=rng
-                        )
-                    )
-                    vals = resp.get("values", [[]])
-                    vals = vals[0] if vals and vals[0] else []
-                    # Consideramos vacía si ninguna de las columnas de encabezado tiene valor
-                    is_row_empty = len(vals) == 0 or all(_norm(x) == "" for x in vals)
+                    row = self._get_rows_as_dicts([probe]).get(probe, {})
+                    is_row_empty = all(_norm(row.get(h, "")) == "" for h in self.headers)
                     if is_row_empty:
                         row_num = probe
                         using_free_row = True
@@ -438,4 +445,3 @@ class SheetsTable:
             self._update_row_from_dict(row_num, updated)
             return {"action": "update", "radicado": rad, "row": row_num, "filled": filled, "skipped": skipped, "missing": missing}
         return {"action": "noop", "radicado": rad, "row": row_num, "filled": [], "skipped": skipped, "missing": missing}
-

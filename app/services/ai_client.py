@@ -28,6 +28,7 @@ o MODIFICACIÓN RAZÓN SOCIAL O REPRESENTANTE, se deben dejar en blanco (null) l
 El control de calidad fue realizado por: [Nombre del ente] el [Fecha]
 - En caso de que exista una sección de DATOS A MODIFICAR, revisar qué elemento se encuentran en esa sección, normalmente se encuentra el tubo de rayos x
 y sus datos, para que sea más claro que en este caso se debe poner Modificación cambio tubo
+- No llenar la información del radicado.
 
 
 Listas permitidas
@@ -60,6 +61,7 @@ TIPO DE SOLICITUD:
 - Modificación Razón Social o Representante legal
 - Renovación
 - Corrección
+- PSPRYCC (Prestación de Servicio de Protección Radiológica y Control de Calidad)
 
 MARCAS (preferente; si no, transcribe la del texto):
 - ACCURAY, AJEX MEDITECH, AMERICAN X RAY, AMERICOMP, AMRAD, ARDET, BELMONT,
@@ -115,6 +117,7 @@ Salida obligatoria:
       "MARCA TUBO RX": "",
       "MODELO TUBO RX": "",
       "SERIE TUBO RX": "",
+      "FECHA FABRICACIÓN TUBO RX": "",
       "CONTROL CALIDAD": "",
       "FECHA CC": ""
     }}
