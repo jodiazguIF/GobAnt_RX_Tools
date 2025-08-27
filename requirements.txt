@@ -1,5 +1,8 @@
-google-api-python-client
-google-auth
-google-auth-oauthlib
-python-docx
-google-generativeai
+fastapi
+uvicorn
+pandas
+duckdb
+pydantic-settings
+pydantic
+pyarrow
+pytest

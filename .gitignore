@@ -215,3 +215,6 @@ token_drive.json
 Revision_Licencias
 Credentials
 licencias_Json
+data/processed/*.parquet
+reports/*.json
+data/warehouse.duckdb
