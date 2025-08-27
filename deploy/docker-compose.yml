@@ -1,0 +1,22 @@
+version: '3.9'
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    env_file:
+      - env.example
+    volumes:
+      - ../data:/app/data
+    ports:
+      - "8000:8000"
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+    env_file:
+      - env.example
+    volumes:
+      - ../data:/app/data
+    ports:
+      - "3000:3000"

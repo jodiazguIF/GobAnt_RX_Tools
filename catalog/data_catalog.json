@@ -1,0 +1,20 @@
+{
+  "tables": {
+    "licencias": {
+      "description": "Hechos de licenciamiento",
+      "fields": {
+        "radicado": {"type": "string", "synonyms": ["RADICADO"]},
+        "municipio": {"type": "string", "synonyms": ["MUNICIPIO"]},
+        "subregion": {"type": "string", "synonyms": ["SUBREGION", "SUBREGIÓN"]},
+        "tipo_equipo": {"type": "string", "synonyms": ["TIPO DE EQUIPO"]},
+        "categoria": {"type": "string", "synonyms": ["CATEGORIA", "CATEGORÍA"]},
+        "fecha": {"type": "date", "synonyms": ["FECHA"]},
+        "control_calidad": {"type": "date", "synonyms": ["CONTROL CALIDAD", "FECHA CC"]}
+      }
+    },
+    "dim_municipio": {"fields": {"municipio": {"type": "string"}}},
+    "dim_subregion": {"fields": {"subregion": {"type": "string"}}},
+    "dim_tiempo": {"fields": {"fecha": {"type": "date"}}},
+    "dim_equipo": {"fields": {"tipo_equipo": {"type": "string"}, "categoria": {"type": "string"}}}
+  }
+}
