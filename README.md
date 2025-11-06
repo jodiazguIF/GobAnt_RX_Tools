@@ -144,6 +144,37 @@ Flujo para cada `.docx` en `DRIVE_FOLDER_ID`:
 
 ---
 
+## Interfaz gráfica para licencias
+
+Además del pipeline por consola, el repositorio incluye una interfaz de escritorio basada en **PySide6** para generar licencias desde plantillas Word.
+
+```bash
+python gui_app.py
+```
+
+### Paso a paso
+
+1. **Configura las plantillas la primera vez.**
+   * En la sección *Plantillas de licencia* presiona **Seleccionar…** para cada combinación (Natural/Jurídica × Categoría I/II) y apunta al `.docx` con marcadores `{{CAMPO}}` en negrilla.
+   * Guarda las rutas con **Guardar rutas de plantillas**. La configuración queda persistida en `~/.gobant_rx_tools_gui.json` para futuros usos.
+2. **Carga la fuente o ingresa los datos manualmente.**
+   * Usa **Cargar documento .docx** para leer un checklist estándar. La app detecta persona/categoría y rellena el formulario.
+   * Si no tienes documento, elige **Ingresar datos manualmente** y llena cada campo directamente en la interfaz.
+3. **Revisa y corrige la información.**
+   * Todos los campos editables aparecen en el formulario central; cualquier edición se normaliza a mayúsculas/negrilla al guardar.
+   * Marca si quieres **Actualizar documento origen** (reescribe el `.docx` original con los datos corregidos).
+4. **Genera la licencia.**
+   * Presiona **Generar licencia**. El archivo se crea junto al documento fuente (o en la carpeta elegida manualmente) con el patrón `RADICADO_SOLICITANTE_LICENCIA.docx`.
+   * Al finalizar, la bitácora inferior muestra el resultado o posibles errores.
+5. **(Opcional) Sube a Drive y ejecuta el pipeline.**
+   * Activa **Subir licencia a Drive y ejecutar pipeline** para reutilizar la configuración de `app/config.py` y disparar la ingesta automática tras la generación.
+6. **Monitorea tareas del pipeline.**
+   * Desde la pestaña *Carga automática (Drive/Sheets)* puedes lanzar los comandos `process_folder`, `process_folder_only_new` o `process_folder_only_pending` sin salir de la GUI.
+
+> Consejo: si tu checklist cambia de estructura, ajusta los campos esperados en `app/gui/constants.py` antes de usar la aplicación para garantizar que el mapeo siga funcionando.
+
+---
+
 ## Personalización
 
 * **Encabezados de la hoja**: ajusta variables `COL_*` en `.env` o en `app/config.py`.
