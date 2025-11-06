@@ -251,10 +251,26 @@ def _copy_run_format(source: Run, target: Run) -> None:
         target.font.size = source.font.size
 
 
-def generate_from_template(template_path: Path, output_path: Path, data: Dict[str, str]) -> Path:
+_RESOLUTION_PLACEHOLDER_KEYS = {
+    normalize_placeholder_key("RESOLUCION"),
+    normalize_placeholder_key("DIA_EMISION"),
+    normalize_placeholder_key("MES_EMISION"),
+    normalize_placeholder_key("ANO_EMISION"),
+}
+
+
+def generate_from_template(
+    template_path: Path,
+    output_path: Path,
+    data: Dict[str, str],
+    *,
+    include_resolution_paragraph: bool = True,
+) -> Path:
     """Crea un documento a partir de la plantilla y lo guarda."""
 
     document = Document(str(template_path))
+    if not include_resolution_paragraph:
+        _remove_resolution_paragraph(document)
     replace_placeholders(document, data)
     document.save(str(output_path))
     return output_path
@@ -350,6 +366,29 @@ def _parse_row_entries(row: _Row) -> List[RowEntry]:
             i += 1
 
     return entries
+
+
+def _remove_resolution_paragraph(document: DocumentType) -> None:
+    """Elimina el párrafo asociado a la resolución previa si está presente."""
+
+    paragraphs = list(iter_paragraphs(document))
+    for paragraph in paragraphs:
+        text = paragraph.text or ""
+        if not text:
+            continue
+        matches = _PLACEHOLDER_PATTERN.findall(text)
+        if not matches:
+            continue
+        normalized = {normalize_placeholder_key(match) for match in matches}
+        if normalized & _RESOLUTION_PLACEHOLDER_KEYS:
+            _remove_paragraph(paragraph)
+
+
+def _remove_paragraph(paragraph: Paragraph) -> None:
+    parent = paragraph._element.getparent()
+    if parent is None:
+        return
+    parent.remove(paragraph._element)
 
 
 def _detect_section(row: _Row) -> Optional[str]:

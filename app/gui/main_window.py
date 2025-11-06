@@ -150,6 +150,11 @@ class LicenseGeneratorWindow(QMainWindow):
         self.chk_upload_drive = QCheckBox("Subir licencia a Drive y ejecutar pipeline")
         layout.addWidget(self.chk_upload_drive)
 
+        self.chk_resolution_paragraph = QCheckBox(
+            "Incluir párrafo que deja sin efecto una resolución previa"
+        )
+        layout.addWidget(self.chk_resolution_paragraph)
+
         layout.addStretch(1)
 
         generate_button = QPushButton("Generar licencia")
@@ -254,6 +259,7 @@ class LicenseGeneratorWindow(QMainWindow):
                 widget.blockSignals(True)
                 widget.setCurrentIndex(0)
                 widget.blockSignals(False)
+        self.chk_resolution_paragraph.setChecked(False)
         self.log("Formulario limpio. Puedes ingresar valores manualmente.")
 
     def load_source_document(self) -> None:
@@ -364,7 +370,20 @@ class LicenseGeneratorWindow(QMainWindow):
         output_name = build_output_name(source_stub, radicado)
         output_path = output_dir / f"{output_name}.docx"
 
-        generate_from_template(template_path, output_path, self.current_data)
+        include_resolution_flag = self.chk_resolution_paragraph.isChecked()
+        resolution_fields = ["RESOLUCION", "DIA_EMISION", "MES_EMISION", "ANO_EMISION"]
+        has_resolution_data = all(self.current_data.get(field) for field in resolution_fields)
+        if include_resolution_flag and not has_resolution_data:
+            self.log(
+                "Faltan datos de resolución, se omitirá el párrafo que deja sin efecto la resolución previa."
+            )
+
+        generate_from_template(
+            template_path,
+            output_path,
+            self.current_data,
+            include_resolution_paragraph=include_resolution_flag and has_resolution_data,
+        )
         self.log(f"Se generó la licencia en {output_path}.")
 
         if self.chk_update_source.isChecked() and self.source_path:
