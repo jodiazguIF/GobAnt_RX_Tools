@@ -28,6 +28,8 @@ class GuiConfig:
     templates: TemplateConfig = field(default_factory=TemplateConfig)
     last_open_dir: str = ""
     last_save_dir: str = ""
+    last_qc_dir: str = ""
+    last_qc_export_dir: str = ""
 
 
 DEFAULT_CONFIG = GuiConfig()
@@ -43,6 +45,8 @@ def load_config(path: Path = CONFIG_PATH) -> GuiConfig:
         templates=templates,
         last_open_dir=data.get("last_open_dir", ""),
         last_save_dir=data.get("last_save_dir", ""),
+        last_qc_dir=data.get("last_qc_dir", ""),
+        last_qc_export_dir=data.get("last_qc_export_dir", ""),
     )
 
 

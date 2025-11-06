@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import traceback
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from PySide6.QtCore import QThreadPool, Qt
 from PySide6.QtWidgets import (
@@ -22,6 +22,9 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -39,6 +42,7 @@ from .doc_processing import (
 )
 from .text_utils import normalize_value, split_resolution_date
 from .workers import Worker
+from .pdf_processing import QualityReportResult, parse_quality_folder
 
 
 class LicenseGeneratorWindow(QMainWindow):
@@ -58,6 +62,13 @@ class LicenseGeneratorWindow(QMainWindow):
         self.pipeline: Optional[IngestPipeline] = None
         self.license_log: Optional[QPlainTextEdit] = None
         self.pipeline_log: Optional[QPlainTextEdit] = None
+        self.qc_log: Optional[QPlainTextEdit] = None
+
+        self.qc_table: Optional[QTableWidget] = None
+        self.qc_folder_label: Optional[QLabel] = None
+
+        self.qc_folder: Optional[Path] = None
+        self.qc_results: List[QualityReportResult] = []
 
         self._init_ui()
 
@@ -65,6 +76,7 @@ class LicenseGeneratorWindow(QMainWindow):
     def _init_ui(self) -> None:
         tabs = QTabWidget()
         tabs.addTab(self._build_license_tab(), "Generación de licencias")
+        tabs.addTab(self._build_qc_tab(), "Reportes control de calidad")
         tabs.addTab(self._build_pipeline_tab(), "Carga automática (Drive/Sheets)")
         self.setCentralWidget(tabs)
 
@@ -95,6 +107,16 @@ class LicenseGeneratorWindow(QMainWindow):
         layout.addWidget(self._build_log_section("license_log", "Bitácora"))
         return container
 
+    def _build_qc_tab(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+
+        layout.addWidget(self._build_qc_folder_section())
+        layout.addWidget(self._build_qc_actions_section())
+        layout.addWidget(self._build_qc_table())
+        layout.addWidget(self._build_log_section("qc_log", "Bitácora"))
+        return container
+
     def _build_file_section(self) -> QGroupBox:
         box = QGroupBox("Documento origen")
         layout = QHBoxLayout(box)
@@ -110,6 +132,130 @@ class LicenseGeneratorWindow(QMainWindow):
         layout.addWidget(clear_button)
 
         return box
+
+    def _build_qc_folder_section(self) -> QGroupBox:
+        box = QGroupBox("Carpeta de controles de calidad")
+        layout = QHBoxLayout(box)
+        self.qc_folder_label = QLabel("Sin carpeta seleccionada")
+        layout.addWidget(self.qc_folder_label, stretch=1)
+
+        select_btn = QPushButton("Seleccionar carpeta…")
+        select_btn.clicked.connect(self.select_qc_folder)
+        layout.addWidget(select_btn)
+
+        return box
+
+    def _build_qc_actions_section(self) -> QGroupBox:
+        box = QGroupBox("Acciones")
+        layout = QHBoxLayout(box)
+
+        analyze_btn = QPushButton("Analizar PDFs")
+        analyze_btn.clicked.connect(self.analyze_qc_reports)
+        layout.addWidget(analyze_btn)
+
+        export_btn = QPushButton("Exportar JSON")
+        export_btn.clicked.connect(self.export_qc_json)
+        layout.addWidget(export_btn)
+
+        layout.addStretch(1)
+        return box
+
+    def _build_qc_table(self) -> QGroupBox:
+        box = QGroupBox("Resultados")
+        layout = QVBoxLayout(box)
+        self.qc_table = QTableWidget(0, 5)
+        self.qc_table.setHorizontalHeaderLabels(
+            ["Archivo", "Identificador", "Fecha de visita", "Tipo de equipo", "Institución"]
+        )
+        header = self.qc_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        layout.addWidget(self.qc_table)
+        return box
+
+    def select_qc_folder(self) -> None:
+        start_dir = self.config.last_qc_dir or str(Path.home())
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Selecciona la carpeta con PDFs",
+            start_dir,
+        )
+        if not directory:
+            return
+        self.qc_folder = Path(directory)
+        self.config.last_qc_dir = str(self.qc_folder)
+        save_config(self.config)
+        if self.qc_folder_label:
+            self.qc_folder_label.setText(str(self.qc_folder))
+        self.log_qc(f"Carpeta seleccionada: {self.qc_folder}")
+
+    def analyze_qc_reports(self) -> None:
+        if not self.qc_folder:
+            QMessageBox.warning(self, "Sin carpeta", "Selecciona primero una carpeta con PDFs.")
+            return
+        self.log_qc("Analizando archivos PDF…")
+        worker = Worker(parse_quality_folder, self.qc_folder)
+        worker.signals.finished.connect(self._on_qc_analysis_finished)
+        worker.signals.error.connect(lambda exc: self._show_worker_error("control de calidad", exc))
+        self.thread_pool.start(worker)
+
+    def _on_qc_analysis_finished(self, results: List[QualityReportResult]) -> None:
+        self.qc_results = results
+        self._populate_qc_table(results)
+        self.log_qc(f"Se analizaron {len(results)} archivo(s).")
+        for result in results:
+            for warning in result.warnings:
+                self.log_qc(f"{result.path.name}: {warning}")
+
+    def _populate_qc_table(self, results: List[QualityReportResult]) -> None:
+        if not self.qc_table:
+            return
+        self.qc_table.setRowCount(0)
+        for result in results:
+            row = self.qc_table.rowCount()
+            self.qc_table.insertRow(row)
+            values = [
+                result.path.name,
+                result.identifier,
+                result.fecha_visita,
+                result.tipo_equipo,
+                result.nombre_institucion,
+            ]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                self.qc_table.setItem(row, column, item)
+
+    def export_qc_json(self) -> None:
+        if not self.qc_results:
+            QMessageBox.information(self, "Sin datos", "Analiza primero una carpeta con PDFs.")
+            return
+        start_dir = self.config.last_qc_export_dir or (
+            str(self.qc_folder) if self.qc_folder else str(Path.home())
+        )
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Guardar resultados como JSON",
+            str(Path(start_dir) / "control_calidad.json"),
+            "Archivos JSON (*.json)",
+        )
+        if not file_path:
+            return
+        output_path = Path(file_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        data = [result.to_dict() for result in self.qc_results]
+        try:
+            import json
+
+            with output_path.open("w", encoding="utf-8") as fh:
+                json.dump(data, fh, ensure_ascii=False, indent=2)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Error", f"No se pudo guardar el JSON: {exc}")
+            self.log_qc(f"Error al guardar JSON: {exc}")
+            return
+
+        self.config.last_qc_export_dir = str(output_path.parent)
+        save_config(self.config)
+        self.log_qc(f"Resultados guardados en {output_path}")
 
     def _build_templates_section(self) -> QGroupBox:
         box = QGroupBox("Plantillas de licencia")
@@ -452,6 +598,9 @@ class LicenseGeneratorWindow(QMainWindow):
 
     def log_pipeline(self, message: str) -> None:
         self._append_to_log(self.pipeline_log, message)
+
+    def log_qc(self, message: str) -> None:
+        self._append_to_log(self.qc_log, message)
 
     def _append_to_log(self, widget: Optional[QPlainTextEdit], message: str) -> None:
         if widget is None:
