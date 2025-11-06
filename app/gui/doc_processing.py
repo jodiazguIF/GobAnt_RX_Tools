@@ -356,6 +356,14 @@ def _detect_section(row: _Row) -> Optional[str]:
     """Detecta si la fila representa un encabezado de sección."""
 
     texts = [cell.text.strip() for cell in row.cells if cell.text and cell.text.strip()]
+    if not texts:
+        return None
+
+    candidate = " ".join(texts)
+    normalized = normalize_label(candidate)
+    if normalized in SECTION_LABEL_TO_FIELD:
+        return normalized
+
     if len(texts) != 1:
         return None
     normalized = normalize_label(texts[0])
@@ -394,6 +402,8 @@ _LABEL_HINT_KEYWORDS = (
     "SERIE",
     "TUBO",
     "CONTROL",
+    "EMPRES",
+    "QC",
     "OPR",
     "OBSERV",
 )

@@ -63,6 +63,7 @@ FIELDS: List[FieldDefinition] = [
     FieldDefinition("RESOLUCION", "Número de resolución"),
     FieldDefinition("FECHA_RESOLUCION", "Fecha de resolución"),
     FieldDefinition("TIPO_SOLICITANTE", "Tipo de solicitante", required=True),
+    FieldDefinition("CATEGORIA", "Categoría de licencia", required=True),
     FieldDefinition("NOMBRE_SOLICITANTE", "Nombre o razón social", required=True),
     FieldDefinition("NIT_CC", "NIT o C.C.", required=True),
     FieldDefinition("REPRESENTANTE_LEGAL", "Representante legal"),
@@ -94,7 +95,7 @@ FIELDS: List[FieldDefinition] = [
 ]
 
 
-HIDDEN_KEYS: Set[str] = {"CATEGORIA", "SUBREGION"}
+HIDDEN_KEYS: Set[str] = {"SUBREGION"}
 
 
 # Mapeo de etiquetas encontradas en los documentos fuente hacia las claves estándar.

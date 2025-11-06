@@ -173,6 +173,25 @@ python gui_app.py
 
 > Consejo: si tu checklist cambia de estructura, ajusta los campos esperados en `app/gui/constants.py` antes de usar la aplicación para garantizar que el mapeo siga funcionando.
 
+#### Checklist: etiquetas recomendadas
+
+Para que el lector de tablas reconozca cada dato automáticamente, asegúrate de que las celdas de la tabla contengan una de las siguientes etiquetas (negrilla y con dos puntos opcional). Es válido que la etiqueta esté seguida del valor en la misma celda o que el valor esté en la celda contigua.
+
+| Campo en la app/plantilla (`{{CLAVE}}`) | Texto sugerido en el checklist |
+| --- | --- |
+| `{{NOMBRE_SOLICITANTE}}` | `NOMBRE O RAZÓN SOCIAL` / `RAZON SOCIAL` |
+| `{{NIT_CC}}` | `NIT O CC` / `NIT` / `C.C` |
+| `{{REPRESENTANTE_LEGAL}}` | `REPRESENTANTE LEGAL` / `NOMBRE REPRESENTANTE LEGAL` |
+| `{{REPRESENTANTE_CC}}` | `CC REPRESENTANTE LEGAL` / `DOCUMENTO REPRESENTANTE LEGAL` |
+| `{{OPR_NOMBRE}}` | `ENCARGADO/OPR NOMBRE COMPLETO` / `OFICIAL DE PROTECCIÓN RADIOLÓGICA` |
+| `{{OPR_CC}}` | `CC OPR` / `DOCUMENTO OPR` |
+| `{{EMPRESA_QC}}` | `EMPRESA CONTROL CALIDAD` / `EMPRESA QUE REALIZÓ EL CONTROL DE CALIDAD` *(o simplemente `EMPRESA` dentro de la sección «CONTROL DE CALIDAD»)* |
+| `{{FECHA_QC}}` | `FECHA CONTROL CALIDAD` / `FECHA DEL CONTROL DE CALIDAD` *(o `FECHA` dentro de la sección «CONTROL DE CALIDAD»)* |
+| `{{SERIE}}` | `SERIE` / `NÚMERO DE SERIE` |
+| `{{CATEGORIA}}` | `CATEGORÍA` / `CATEGORÍA LICENCIA` |
+
+> Nota: Los valores pueden incluir guiones (`-`) o diagonales sin afectar la detección. Si una etiqueta necesita abreviarse en el checklist (por ejemplo `EMPRESA` o `FECHA`), ubícala debajo del encabezado de tabla “CONTROL DE CALIDAD” para que la app la asocie con `EMPRESA_QC` o `FECHA_QC` respectivamente.
+
 ---
 
 ## Personalización
