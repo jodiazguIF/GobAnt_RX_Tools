@@ -165,7 +165,8 @@ python gui_app.py
    * Marca si quieres **Actualizar documento origen** (reescribe el `.docx` original con los datos corregidos).
 4. **Genera la licencia.**
    * Presiona **Generar licencia**. El archivo se crea junto al documento fuente (o en la carpeta elegida manualmente) con el patrón `RADICADO_SOLICITANTE_LICENCIA.docx`.
-   * Activa la casilla **Incluir párrafo que deja sin efecto una resolución previa** si tu plantilla contiene ese texto y cuentas con los datos de resolución (`{{RESOLUCION}}`, `{{DIA_EMISION}}`, `{{MES_EMISION}}`, `{{AÑO_EMISION}}`). Si falta alguno, la aplicación omitirá automáticamente el párrafo aunque la casilla esté marcada.
+   * Activa la casilla **Incluir párrafo que deja sin efecto una resolución previa** si tu plantilla contiene ese texto y cuentas con los datos de resolución (`{{RESOLUCION}}`, `{{DIA}}`/`{{DIA_EMISION}}`, `{{MES}}`/`{{MES_EMISION}}`, `{{AÑO}}`/`{{AÑO_EMISION}}`). Si falta alguno, la aplicación omitirá automáticamente el párrafo aunque la casilla esté marcada.
+   * Para señalar el párrafo opcional en Word, escribe literalmente el texto (por ejemplo: `Este acto administrativo deja sin efecto...`) incluyendo los marcadores anteriores; la app eliminará el párrafo completo cuando la casilla esté desactivada o falten datos.
    * Al finalizar, la bitácora inferior muestra el resultado o posibles errores.
 5. **(Opcional) Sube a Drive y ejecuta el pipeline.**
    * Activa **Subir licencia a Drive y ejecutar pipeline** para reutilizar la configuración de `app/config.py` y disparar la ingesta automática tras la generación.
@@ -191,10 +192,12 @@ Para que el lector de tablas reconozca cada dato automáticamente, asegúrate de
 | `{{SERIE}}` | `SERIE` / `NÚMERO DE SERIE` |
 | `{{CATEGORIA}}` | `CATEGORÍA` / `CATEGORÍA LICENCIA` |
 | `{{RESOLUCION}}` | `RESOLUCIÓN` / `NÚMERO DE RESOLUCIÓN` |
-| `{{FECHA_RESOLUCION}}` | `FECHA RESOLUCIÓN` / `FECHA DE LA RESOLUCIÓN` |
-| `{{DIA_EMISION}}` | `DÍA EMISIÓN` / `DÍA DE EMISIÓN` |
-| `{{MES_EMISION}}` | `MES EMISIÓN` / `MES DE EMISIÓN` |
-| `{{AÑO_EMISION}}` | `AÑO EMISIÓN` / `AÑO DE EMISIÓN` |
+| `{{FECHA_RESOLUCION}}` | `FECHA RESOLUCIÓN` / `FECHA DE LA RESOLUCIÓN` *(formato dd/mm/aaaa)* |
+| `{{DIA_EMISION}}` o `{{DIA}}` | `DÍA EMISIÓN` / `DÍA` |
+| `{{MES_EMISION}}` o `{{MES}}` | `MES EMISIÓN` / `MES` |
+| `{{AÑO_EMISION}}` o `{{AÑO}}` | `AÑO EMISIÓN` / `AÑO` |
+
+> La aplicación toma la fecha `dd/mm/aaaa` detectada en el checklist y rellena automáticamente `{{DIA}}`, `{{MES}}` (nombre del mes en texto) y `{{AÑO}}`. Si borras la fecha en la interfaz, los tres campos se limpian para evitar información obsoleta.
 
 > Nota: Los valores pueden incluir guiones (`-`) o diagonales sin afectar la detección. Si una etiqueta necesita abreviarse en el checklist (por ejemplo `EMPRESA` o `FECHA`), ubícala debajo del encabezado de tabla “CONTROL DE CALIDAD” para que la app la asocie con `EMPRESA_QC` o `FECHA_QC` respectivamente.
 

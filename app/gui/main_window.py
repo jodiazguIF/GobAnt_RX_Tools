@@ -37,7 +37,7 @@ from .doc_processing import (
     generate_from_template,
     update_source_document,
 )
-from .text_utils import normalize_value
+from .text_utils import normalize_value, split_resolution_date
 from .workers import Worker
 
 
@@ -241,6 +241,12 @@ class LicenseGeneratorWindow(QMainWindow):
                 widget.setCurrentIndex(0)
                 widget.blockSignals(False)
 
+        if key == "FECHA_RESOLUCION":
+            if normalized:
+                self._fill_resolution_components(normalized)
+            else:
+                self._clear_resolution_components()
+
     def clear_form(self) -> None:
         self.source_path = None
         self.source_label.setText("Ingreso manual de datos")
@@ -261,6 +267,20 @@ class LicenseGeneratorWindow(QMainWindow):
                 widget.blockSignals(False)
         self.chk_resolution_paragraph.setChecked(False)
         self.log("Formulario limpio. Puedes ingresar valores manualmente.")
+
+    def _fill_resolution_components(self, date_text: str) -> None:
+        parts = split_resolution_date(date_text)
+        if not parts:
+            return
+        day, month_name, year = parts
+        self._set_field("DIA_EMISION", day)
+        self._set_field("MES_EMISION", month_name)
+        self._set_field("ANO_EMISION", year)
+
+    def _clear_resolution_components(self) -> None:
+        for key in ("DIA_EMISION", "MES_EMISION", "ANO_EMISION"):
+            if self.current_data.get(key):
+                self._set_field(key, "")
 
     def load_source_document(self) -> None:
         start_dir = self.config.last_open_dir or str(Path.home())

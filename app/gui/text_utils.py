@@ -3,8 +3,24 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from typing import Optional, Tuple
 
 from docx.text.run import Run
+
+MONTH_NAMES_ES = {
+    1: "ENERO",
+    2: "FEBRERO",
+    3: "MARZO",
+    4: "ABRIL",
+    5: "MAYO",
+    6: "JUNIO",
+    7: "JULIO",
+    8: "AGOSTO",
+    9: "SEPTIEMBRE",
+    10: "OCTUBRE",
+    11: "NOVIEMBRE",
+    12: "DICIEMBRE",
+}
 
 
 def strip_accents(value: str) -> str:
@@ -48,3 +64,36 @@ def apply_bold_text(run: Run, value: str) -> None:
 
     run.text = value
     run.bold = True
+
+
+_RESOLUTION_DATE_RE = re.compile(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$")
+
+
+def split_resolution_date(value: str) -> Optional[Tuple[str, str, str]]:
+    """Descompone una fecha dd/mm/aaaa en día, mes (texto) y año.
+
+    El mes se devuelve con el nombre en español en mayúsculas y sin tildes.
+    Si el valor no coincide con el patrón esperado, se devuelve ``None``.
+    """
+
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+
+    match = _RESOLUTION_DATE_RE.match(cleaned)
+    if not match:
+        return None
+
+    day_raw, month_raw, year_raw = match.groups()
+
+    day = str(int(day_raw))
+    month_index = int(month_raw)
+    if month_index not in MONTH_NAMES_ES:
+        return None
+    month_name = MONTH_NAMES_ES[month_index]
+
+    year = year_raw
+    if len(year) == 2:
+        year = f"20{year}"
+
+    return day, month_name, year

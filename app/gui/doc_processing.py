@@ -256,6 +256,9 @@ _RESOLUTION_PLACEHOLDER_KEYS = {
     normalize_placeholder_key("DIA_EMISION"),
     normalize_placeholder_key("MES_EMISION"),
     normalize_placeholder_key("ANO_EMISION"),
+    normalize_placeholder_key("DIA"),
+    normalize_placeholder_key("MES"),
+    normalize_placeholder_key("ANO"),
 }
 
 
@@ -271,9 +274,31 @@ def generate_from_template(
     document = Document(str(template_path))
     if not include_resolution_paragraph:
         _remove_resolution_paragraph(document)
-    replace_placeholders(document, data)
+    expanded = _expand_placeholder_aliases(data)
+    replace_placeholders(document, expanded)
     document.save(str(output_path))
     return output_path
+
+
+def _expand_placeholder_aliases(data: Dict[str, str]) -> Dict[str, str]:
+    """Agrega claves alternativas para los marcadores más comunes."""
+
+    expanded = dict(data)
+
+    day = data.get("DIA_EMISION")
+    if day and "DIA" not in expanded:
+        expanded["DIA"] = day
+
+    month = data.get("MES_EMISION")
+    if month and "MES" not in expanded:
+        expanded["MES"] = month
+
+    year = data.get("ANO_EMISION") or data.get("AÑO_EMISION")
+    if year:
+        expanded.setdefault("AÑO", year)
+        expanded.setdefault("ANO", year)
+
+    return expanded
 
 
 def build_output_name(source_file: Path, radicado: str) -> str:
