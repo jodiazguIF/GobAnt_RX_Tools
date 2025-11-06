@@ -1,7 +1,7 @@
 import io
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any as any, Dict, List
 
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from docx import Document
@@ -12,7 +12,7 @@ class DriveClient:
     def __init__(self, drive_service):
         self.drive = drive_service
 
-    def list_docx_in_folder(self, folder_id: str) -> List[Dict[str, Any]]:
+    def list_docx_in_folder(self, folder_id: str) -> List[Dict[str, any]]:
         q = f"'{folder_id}' in parents and mimeType='{DOCX_MIME}' and trashed=false"
         files = []
         token = None
@@ -55,7 +55,7 @@ class DriveClient:
                 )
                 time.sleep(wait)
 
-    def upload_docx(self, folder_id: str, file_path: str | os.PathLike[str]) -> Dict[str, Any]:
+    def upload_docx(self, folder_id: str, file_path: str | os.PathLike[str]) -> Dict[str, any]:
         """Sube un documento .docx a la carpeta indicada."""
 
         if not folder_id:
