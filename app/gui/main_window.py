@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from app.config import settings
 from app.pipeline.ingest import IngestPipeline
 from .config_store import GuiConfig, load_config, save_config
-from .constants import CategoriaTipo, FIELDS, PersonaTipo
+from .constants import CategoriaTipo, FIELDS, HIDDEN_KEYS, PersonaTipo
 from .doc_processing import (
     build_output_name,
     extract_from_docx,
@@ -53,6 +53,8 @@ class LicenseGeneratorWindow(QMainWindow):
         self.source_path: Optional[Path] = None
         self.field_inputs: Dict[str, QWidget] = {}
         self.current_data: Dict[str, str] = {field.key: "" for field in FIELDS}
+        for key in HIDDEN_KEYS:
+            self.current_data[key] = ""
         self.pipeline: Optional[IngestPipeline] = None
         self.license_log: Optional[QPlainTextEdit] = None
         self.pipeline_log: Optional[QPlainTextEdit] = None
@@ -202,13 +204,6 @@ class LicenseGeneratorWindow(QMainWindow):
             combo.addItem(PersonaTipo.JURIDICA.value)
             combo.currentTextChanged.connect(lambda value, k=key: self._set_field(k, value))
             return combo
-        if key == "CATEGORIA":
-            combo = QComboBox()
-            combo.addItem("")
-            combo.addItem(CategoriaTipo.CAT_1.value)
-            combo.addItem(CategoriaTipo.CAT_2.value)
-            combo.currentTextChanged.connect(lambda value, k=key: self._set_field(k, value))
-            return combo
         if multiline:
             text_edit = QTextEdit()
             text_edit.textChanged.connect(lambda k=key, widget=text_edit: self._set_field(k, widget.toPlainText()))
@@ -327,10 +322,16 @@ class LicenseGeneratorWindow(QMainWindow):
 
         persona = PersonaTipo.from_text(self.current_data.get("TIPO_SOLICITANTE", ""))
         categoria = CategoriaTipo.from_text(self.current_data.get("CATEGORIA", ""))
+        if not categoria:
+            categoria = CategoriaTipo.from_text(self.current_data.get("TIPO_DE_EQUIPO", ""))
+        if not categoria:
+            categoria = CategoriaTipo.from_text(self.current_data.get("PRACTICA", ""))
         if not persona:
             raise ValueError("Define si es PERSONA NATURAL o PERSONA JURIDICA.")
         if not categoria:
             raise ValueError("Selecciona si es CATEGORIA 1 o CATEGORIA 2.")
+
+        self.current_data["CATEGORIA"] = categoria.value
 
         template_path_str = self.config.templates.resolve_path(persona, categoria)
         if not template_path_str:

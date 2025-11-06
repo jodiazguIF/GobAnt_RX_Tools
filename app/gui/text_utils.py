@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+
 from docx.text.run import Run
 
 
@@ -29,6 +30,17 @@ def normalize_value(value: str) -> str:
     if not cleaned:
         return ""
     return cleaned.upper()
+
+
+_PLACEHOLDER_CHARS_RE = re.compile(r"[^A-Z0-9]+")
+
+
+def normalize_placeholder_key(value: str) -> str:
+    """Convierte la clave de un marcador a MAYÚSCULAS_CON_GUIONES."""
+
+    cleaned = strip_accents(value).upper()
+    replaced = _PLACEHOLDER_CHARS_RE.sub("_", cleaned)
+    return replaced.strip("_")
 
 
 def apply_bold_text(run: Run, value: str) -> None:

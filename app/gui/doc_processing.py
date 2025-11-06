@@ -1,6 +1,7 @@
 """Funciones para leer, actualizar y generar documentos de licencia."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
@@ -9,9 +10,20 @@ from docx import Document
 from docx.document import Document as DocumentType
 from docx.table import _Cell, _Row
 from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 
-from .constants import LABEL_TO_FIELD, CategoriaTipo, PersonaTipo
-from .text_utils import apply_bold_text, normalize_label, normalize_value
+from .constants import (
+    LABEL_TO_FIELD,
+    SECTION_LABEL_TO_FIELD,
+    CategoriaTipo,
+    PersonaTipo,
+)
+from .text_utils import (
+    apply_bold_text,
+    normalize_label,
+    normalize_placeholder_key,
+    normalize_value,
+)
 
 
 @dataclass
@@ -58,11 +70,16 @@ def extract_from_docx(path: Path) -> DocumentData:
     unmatched: Dict[str, str] = {}
 
     for table in document.tables:
+        current_section: str | None = None
         for row in table.rows:
+            section = _detect_section(row)
+            if section:
+                current_section = section
+                continue
             for entry in _parse_row_entries(row):
                 label_norm = normalize_label(entry.label)
                 raw_labels[label_norm] = entry.value
-                key = LABEL_TO_FIELD.get(label_norm)
+                key = _resolve_field_key(label_norm, current_section)
                 if key:
                     data[key] = normalize_value(entry.value)
                 else:
@@ -87,10 +104,15 @@ def update_source_document(path: Path, updated: Dict[str, str]) -> None:
 
     document = Document(str(path))
     for table in document.tables:
+        current_section: str | None = None
         for row in table.rows:
+            section = _detect_section(row)
+            if section:
+                current_section = section
+                continue
             for entry in _parse_row_entries(row):
                 label_norm = normalize_label(entry.label)
-                key = LABEL_TO_FIELD.get(label_norm)
+                key = _resolve_field_key(label_norm, current_section)
                 if not key:
                     continue
                 value = updated.get(key)
@@ -145,25 +167,88 @@ def write_inline_cell(cell: _Cell, label: str, value: str, separator: str) -> No
 def replace_placeholders(document: DocumentType, data: Dict[str, str]) -> None:
     """Reemplaza cada marcador `{{CLAVE}}` por su valor correspondiente."""
 
-    placeholders = {f"{{{{{key}}}}}": normalize_value(value) for key, value in data.items() if value}
+    placeholders = {
+        normalize_placeholder_key(key): normalize_value(value)
+        for key, value in data.items()
+        if value
+    }
+    if not placeholders:
+        return
     for paragraph in iter_paragraphs(document):
         replace_in_paragraph(paragraph, placeholders)
+
+
+_PLACEHOLDER_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
 
 
 def replace_in_paragraph(paragraph: Paragraph, placeholders: Dict[str, str]) -> None:
     """Reemplaza marcadores dentro de un párrafo conservando formato."""
 
-    if not placeholders:
+    if not paragraph.runs:
         return
-    text = paragraph.text
-    matches = [token for token in placeholders if token in text]
+
+    runs = [run for run in paragraph.runs]
+    full_text = "".join(run.text for run in runs)
+    if not full_text:
+        return
+
+    matches = list(_PLACEHOLDER_PATTERN.finditer(full_text))
     if not matches:
         return
-    for run in paragraph.runs:
-        for token in matches:
-            if token in run.text:
-                run.text = run.text.replace(token, placeholders[token])
-                run.bold = True
+
+    run_spans: List[tuple[int, int, Run]] = []
+    index = 0
+    for run in runs:
+        length = len(run.text)
+        run_spans.append((index, index + length, run))
+        index += length
+
+    fragments: List[tuple[str, str, int]] = []
+    cursor = 0
+    for match in matches:
+        if match.start() > cursor:
+            fragments.append(("text", full_text[cursor:match.start()], cursor))
+        key = normalize_placeholder_key(match.group(1))
+        replacement = placeholders.get(key)
+        if replacement is None:
+            fragments.append(("text", match.group(0), match.start()))
+        else:
+            fragments.append(("bold", replacement, match.start()))
+        cursor = match.end()
+    if cursor < len(full_text):
+        fragments.append(("text", full_text[cursor:], cursor))
+
+    while paragraph.runs:
+        paragraph._element.remove(paragraph.runs[0]._r)
+
+    for kind, text, start in fragments:
+        if not text:
+            continue
+        reference = _find_reference_run(start, run_spans)
+        run = paragraph.add_run(text)
+        if reference:
+            _copy_run_format(reference, run)
+        if kind == "bold":
+            apply_bold_text(run, text)
+
+
+def _find_reference_run(start: int, spans: List[tuple[int, int, Run]]) -> Optional[Run]:
+    for begin, end, run in spans:
+        if begin <= start < end:
+            return run
+    if spans:
+        return spans[-1][2]
+    return None
+
+
+def _copy_run_format(source: Run, target: Run) -> None:
+    target.style = source.style
+    target.bold = source.bold
+    target.italic = source.italic
+    target.underline = source.underline
+    if source.font is not None:
+        target.font.name = source.font.name
+        target.font.size = source.font.size
 
 
 def generate_from_template(template_path: Path, output_path: Path, data: Dict[str, str]) -> Path:
@@ -265,6 +350,30 @@ def _parse_row_entries(row: _Row) -> List[RowEntry]:
             i += 1
 
     return entries
+
+
+def _detect_section(row: _Row) -> Optional[str]:
+    """Detecta si la fila representa un encabezado de sección."""
+
+    texts = [cell.text.strip() for cell in row.cells if cell.text and cell.text.strip()]
+    if len(texts) != 1:
+        return None
+    normalized = normalize_label(texts[0])
+    if normalized in SECTION_LABEL_TO_FIELD:
+        return normalized
+    return None
+
+
+def _resolve_field_key(label_norm: str, section: Optional[str]) -> Optional[str]:
+    """Obtiene la clave asociada a una etiqueta considerando la sección."""
+
+    key = LABEL_TO_FIELD.get(label_norm)
+    if key:
+        return key
+    if section:
+        mapping = SECTION_LABEL_TO_FIELD.get(section, {})
+        return mapping.get(label_norm)
+    return None
 
 
 _LABEL_HINT_KEYWORDS = (

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Set
 
 from .text_utils import normalize_label
 
@@ -63,7 +63,6 @@ FIELDS: List[FieldDefinition] = [
     FieldDefinition("RESOLUCION", "Número de resolución"),
     FieldDefinition("FECHA_RESOLUCION", "Fecha de resolución"),
     FieldDefinition("TIPO_SOLICITANTE", "Tipo de solicitante", required=True),
-    FieldDefinition("CATEGORIA", "Categoría", required=True),
     FieldDefinition("NOMBRE_SOLICITANTE", "Nombre o razón social", required=True),
     FieldDefinition("NIT_CC", "NIT o C.C.", required=True),
     FieldDefinition("REPRESENTANTE_LEGAL", "Representante legal"),
@@ -71,11 +70,13 @@ FIELDS: List[FieldDefinition] = [
     FieldDefinition("SEDE", "Nombre de la sede", required=True),
     FieldDefinition("DIRECCION", "Dirección del establecimiento", required=True),
     FieldDefinition("MUNICIPIO", "Municipio"),
-    FieldDefinition("SUBREGION", "Subregión"),
     FieldDefinition("TIPO_DE_SOLICITUD", "Tipo de solicitud"),
     FieldDefinition("EMAIL_NOTIFICACION", "Email de notificación"),
     FieldDefinition("TIPO_DE_EQUIPO", "Tipo de equipo", required=True),
     FieldDefinition("PRACTICA", "Práctica"),
+    FieldDefinition("KV", "Tensión (kV)"),
+    FieldDefinition("MA", "Corriente (mA)"),
+    FieldDefinition("W", "Potencia (W)"),
     FieldDefinition("MARCA", "Marca"),
     FieldDefinition("MODELO", "Modelo"),
     FieldDefinition("SERIE", "Serie"),
@@ -84,13 +85,17 @@ FIELDS: List[FieldDefinition] = [
     FieldDefinition("MODELO_TUBO", "Modelo tubo RX"),
     FieldDefinition("SERIE_TUBO", "Serie tubo RX"),
     FieldDefinition("FECHA_FABRICACION_TUBO", "Fecha fabricación tubo RX"),
-    FieldDefinition("CONTROL_CALIDAD", "Control de calidad"),
-    FieldDefinition("FECHA_CC", "Fecha control de calidad"),
+    FieldDefinition("CONTROL_CALIDAD", "Concepto control de calidad"),
+    FieldDefinition("EMPRESA_QC", "Empresa control de calidad"),
+    FieldDefinition("FECHA_QC", "Fecha control de calidad"),
     FieldDefinition("OPR_NOMBRE", "Encargado/OPR nombre completo", required=True),
     FieldDefinition("OPR_CC", "C.C. Encargado/OPR", required=True),
     FieldDefinition("UBICACION_EQUIPO", "Ubicación del equipo"),
     FieldDefinition("OBSERVACIONES", "Observaciones", multiline=True),
 ]
+
+
+HIDDEN_KEYS: Set[str] = {"CATEGORIA", "SUBREGION"}
 
 
 # Mapeo de etiquetas encontradas en los documentos fuente hacia las claves estándar.
@@ -107,14 +112,17 @@ LABEL_TO_FIELD: Dict[str, str] = {
     "NOMBRE COMPLETO": "NOMBRE_SOLICITANTE",
     "NIT": "NIT_CC",
     "NIT O CC": "NIT_CC",
+    "NIT O C C": "NIT_CC",
     "NIT CC": "NIT_CC",
     "CEDULA": "NIT_CC",
     "C.C": "NIT_CC",
     "CC": "NIT_CC",
     "REPRESENTANTE LEGAL": "REPRESENTANTE_LEGAL",
     "NOMBRE REPRESENTANTE LEGAL": "REPRESENTANTE_LEGAL",
+    "NOMBRE COMPLETO REPRESENTANTE LEGAL": "REPRESENTANTE_LEGAL",
     "DOCUMENTO REPRESENTANTE LEGAL": "REPRESENTANTE_CC",
     "CC REPRESENTANTE": "REPRESENTANTE_CC",
+    "CC REPRESENTANTE LEGAL": "REPRESENTANTE_CC",
     "CC R": "REPRESENTANTE_CC",
     "NOMBRE SEDE": "SEDE",
     "SEDE": "SEDE",
@@ -130,15 +138,24 @@ LABEL_TO_FIELD: Dict[str, str] = {
     "EMAIL NOTIFICACION": "EMAIL_NOTIFICACION",
     "TIPO DE EQUIPO": "TIPO_DE_EQUIPO",
     "PRACTICA": "PRACTICA",
+    "PRACTICA SOLICITADA": "PRACTICA",
     "CATEGORIA": "CATEGORIA",
     "CATEGORÍA": "CATEGORIA",
     "CATEGORIA LICENCIA": "CATEGORIA",
+    "CATEGORIA DEL EQUIPO": "CATEGORIA",
     "MARCA": "MARCA",
     "MARCA E": "MARCA",
     "MODELO": "MODELO",
     "MODELO E": "MODELO",
     "SERIE": "SERIE",
     "SERIE E": "SERIE",
+    "NUMERO DE SERIE": "SERIE",
+    "KV": "KV",
+    "K V": "KV",
+    "MA": "MA",
+    "M A": "MA",
+    "W": "W",
+    "POTENCIA": "W",
     "FECHA DE FABRICACION": "FECHA_FABRICACION",
     "FECHA DE FABRICACIÓN": "FECHA_FABRICACION",
     "FECHA FABRICACION E": "FECHA_FABRICACION",
@@ -153,13 +170,21 @@ LABEL_TO_FIELD: Dict[str, str] = {
     "FECHA FABRICACION T": "FECHA_FABRICACION_TUBO",
     "FECHA FABRICACIÓN T": "FECHA_FABRICACION_TUBO",
     "CONTROL CALIDAD": "CONTROL_CALIDAD",
-    "FECHA CC": "FECHA_CC",
+    "CONCEPTO": "CONTROL_CALIDAD",
+    "CONCEPTO CC": "CONTROL_CALIDAD",
+    "CONCEPTO QC": "CONTROL_CALIDAD",
+    "FECHA CC": "FECHA_QC",
+    "FECHA CONTROL CALIDAD": "FECHA_QC",
     "OFICIAL DE PROTECCION RADIOLOGICA": "OPR_NOMBRE",
     "OFICIAL DE PROTECCIÓN RADIOLÓGICA": "OPR_NOMBRE",
     "ENCARGADO PROTECCION RADIOLOGICA": "OPR_NOMBRE",
     "ENCARGADO PROTECCIÓN RADIOLÓGICA": "OPR_NOMBRE",
+    "ENCARGADO OPR NOMBRE COMPLETO": "OPR_NOMBRE",
+    "ENCARGADO OPR": "OPR_NOMBRE",
+    "OPR NOMBRE": "OPR_NOMBRE",
     "DOCUMENTO OPR": "OPR_CC",
     "CC OPR": "OPR_CC",
+    "CEDULA OPR": "OPR_CC",
     "CEDULA OPR": "OPR_CC",
     "UBICACION": "UBICACION_EQUIPO",
     "UBICACION E": "UBICACION_EQUIPO",
@@ -173,4 +198,28 @@ LABEL_TO_FIELD: Dict[str, str] = {
     "FECHA RESOLUCIÓN": "FECHA_RESOLUCION",
     "OBSERVACIONES": "OBSERVACIONES",
     "COMENTARIOS": "OBSERVACIONES",
+}
+
+
+SECTION_LABEL_TO_FIELD: Dict[str, Dict[str, str]] = {
+    "CONTROL DE CALIDAD": {
+        "EMPRESA": "EMPRESA_QC",
+        "EMPRESA DEL CC": "EMPRESA_QC",
+        "EMPRESA CC": "EMPRESA_QC",
+        "EMPRESA QC": "EMPRESA_QC",
+        "EMPRESA QUE REALIZA CC": "EMPRESA_QC",
+        "FECHA": "FECHA_QC",
+        "FECHA CC": "FECHA_QC",
+        "FECHA QC": "FECHA_QC",
+        "CONCEPTO": "CONTROL_CALIDAD",
+        "QC": "CONTROL_CALIDAD",
+    },
+    "EQUIPOS A LICENCIAR": {
+        "KV": "KV",
+        "K V": "KV",
+        "MA": "MA",
+        "M A": "MA",
+        "W": "W",
+        "POTENCIA": "W",
+    },
 }
