@@ -1,7 +1,7 @@
 import io
 import os
 import time
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from docx import Document

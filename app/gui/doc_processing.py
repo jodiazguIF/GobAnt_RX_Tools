@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Optional
+from typing import Dict, Iterable, List, Optional
 
 from docx import Document
 from docx.document import Document as DocumentType
@@ -59,16 +59,14 @@ def extract_from_docx(path: Path) -> DocumentData:
 
     for table in document.tables:
         for row in table.rows:
-            entry = _parse_row(row)
-            if not entry:
-                continue
-            label_norm = normalize_label(entry.label)
-            raw_labels[label_norm] = entry.value
-            key = LABEL_TO_FIELD.get(label_norm)
-            if key:
-                data[key] = normalize_value(entry.value)
-            else:
-                unmatched[entry.label] = entry.value
+            for entry in _parse_row_entries(row):
+                label_norm = normalize_label(entry.label)
+                raw_labels[label_norm] = entry.value
+                key = LABEL_TO_FIELD.get(label_norm)
+                if key:
+                    data[key] = normalize_value(entry.value)
+                else:
+                    unmatched[entry.label] = entry.value
 
     persona = PersonaTipo.from_text(data.get("TIPO_SOLICITANTE", ""))
     categoria = CategoriaTipo.from_text(data.get("CATEGORIA", ""))
@@ -90,20 +88,20 @@ def update_source_document(path: Path, updated: Dict[str, str]) -> None:
     document = Document(str(path))
     for table in document.tables:
         for row in table.rows:
-            entry = _parse_row(row)
-            if not entry:
-                continue
-            label_norm = normalize_label(entry.label)
-            key = LABEL_TO_FIELD.get(label_norm)
-            if not key:
-                continue
-            value = updated.get(key)
-            if value is None:
-                continue
-            if entry.inline:
-                write_inline_cell(entry.value_cell, entry.label, value, entry.separator)
-            else:
-                write_cell(entry.value_cell, value)
+            for entry in _parse_row_entries(row):
+                label_norm = normalize_label(entry.label)
+                key = LABEL_TO_FIELD.get(label_norm)
+                if not key:
+                    continue
+                value = updated.get(key)
+                if value is None:
+                    continue
+                if entry.inline:
+                    write_inline_cell(
+                        entry.value_cell, entry.label, value, entry.separator
+                    )
+                else:
+                    write_cell(entry.value_cell, value)
     document.save(str(path))
 
 
@@ -190,12 +188,12 @@ def build_output_name(source_file: Path, radicado: str) -> str:
     return f"{normalize_value(radicado)}_{new_name.split('_', 1)[-1]}"
 
 
-def _parse_row(row: _Row) -> Optional[RowEntry]:
-    """Obtiene la etiqueta y valor de una fila cualquiera."""
+def _parse_row_entries(row: _Row) -> List[RowEntry]:
+    """Descompone una fila en una o varias parejas etiqueta-valor."""
 
     cells = list(row.cells)
     if not cells:
-        return None
+        return []
 
     non_empty = [
         (idx, cell.text.strip(), cell)
@@ -203,48 +201,116 @@ def _parse_row(row: _Row) -> Optional[RowEntry]:
         if cell.text and cell.text.strip()
     ]
     if not non_empty:
-        return None
+        return []
 
-    label_idx, label_text, label_cell = non_empty[0]
-    value_entries = [entry for entry in non_empty[1:] if entry[0] > label_idx]
+    entries: List[RowEntry] = []
+    total = len(non_empty)
+    i = 0
 
-    if value_entries:
-        value_text = " ".join(text for _, text, _ in value_entries)
-        value_cell = value_entries[0][2]
-        return RowEntry(
-            label=label_text,
-            value=value_text,
-            label_cell=label_cell,
-            value_cell=value_cell,
-            inline=False,
-            separator=":",
-        )
+    while i < total:
+        idx, text, cell = non_empty[i]
+        inline = _split_inline_cell(text)
+        if inline:
+            label_text, value_text, separator = inline
+            entries.append(
+                RowEntry(
+                    label=label_text,
+                    value=value_text,
+                    label_cell=cell,
+                    value_cell=cell,
+                    inline=True,
+                    separator=separator,
+                )
+            )
+            i += 1
+            continue
 
-    inline = _split_inline_cell(label_cell.text)
-    if inline:
-        label_text, value_text, separator = inline
-        return RowEntry(
-            label=label_text,
-            value=value_text,
-            label_cell=label_cell,
-            value_cell=label_cell,
-            inline=True,
-            separator=separator,
-        )
+        label_norm = normalize_label(text)
+        if not _looks_like_label(text, label_norm):
+            i += 1
+            continue
 
-    # Si no hay un valor claro, intenta utilizar la primera celda posterior aunque esté vacía.
-    next_index = label_idx + 1 if label_idx + 1 < len(cells) else label_idx
-    value_cell = cells[next_index]
-    if value_cell.text and value_cell.text.strip():
-        return RowEntry(
-            label=label_text,
-            value=value_cell.text.strip(),
-            label_cell=label_cell,
-            value_cell=value_cell,
-            inline=False,
-            separator=":",
-        )
-    return None
+        value_text: Optional[str] = None
+        value_cell = cell
+
+        j = i + 1
+        while j < total:
+            _, candidate_text, candidate_cell = non_empty[j]
+            candidate_inline = _split_inline_cell(candidate_text)
+            candidate_norm = normalize_label(candidate_text)
+
+            if candidate_inline:
+                break
+
+            if _looks_like_label(candidate_text, candidate_norm):
+                break
+
+            value_text = candidate_text
+            value_cell = candidate_cell
+            break
+
+        if value_text:
+            entries.append(
+                RowEntry(
+                    label=text,
+                    value=value_text,
+                    label_cell=cell,
+                    value_cell=value_cell,
+                    inline=False,
+                    separator=":",
+                )
+            )
+            i = j
+        else:
+            i += 1
+
+    return entries
+
+
+_LABEL_HINT_KEYWORDS = (
+    "RADIC",
+    "FECHA",
+    "CATEG",
+    "SOLICIT",
+    "REPRESENT",
+    "NIT",
+    "CEDULA",
+    "DIREC",
+    "MUNIC",
+    "SUBREG",
+    "SEDE",
+    "EQUIPO",
+    "MARCA",
+    "MODELO",
+    "SERIE",
+    "TUBO",
+    "CONTROL",
+    "OPR",
+    "OBSERV",
+)
+
+
+def _looks_like_label(text: str, normalized: str) -> bool:
+    """Determina si un bloque de texto se comporta como etiqueta."""
+
+    if not text:
+        return False
+
+    if normalized in LABEL_TO_FIELD:
+        return True
+
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    if ":" in stripped:
+        return True
+
+    for hint in _LABEL_HINT_KEYWORDS:
+        if hint in normalized:
+            return True
+
+    return False
 
 
 def _split_inline_cell(text: str) -> Optional[tuple[str, str, str]]:
