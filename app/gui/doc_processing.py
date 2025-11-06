@@ -431,13 +431,25 @@ def _split_inline_cell(text: str) -> Optional[tuple[str, str, str]]:
     if not stripped:
         return None
 
-    for separator in (":", "-", "–", "—", ";"):
+    for separator in (":", "–", "—", ";"):
         if separator in stripped:
             left, right = stripped.split(separator, 1)
             label = left.strip()
             value = right.strip()
-            if label and value:
+            if label and value and _looks_like_label(label, normalize_label(label)):
                 return label, value, separator
+
+    if "-" in stripped:
+        left, right = stripped.split("-", 1)
+        label = left.strip()
+        value = right.strip()
+        if (
+            label
+            and value
+            and _looks_like_label(label, normalize_label(label))
+            and not value.replace("-", "").isdigit()
+        ):
+            return label, value, "-"
 
     lines = [line.strip() for line in stripped.splitlines() if line.strip()]
     if len(lines) >= 2:
