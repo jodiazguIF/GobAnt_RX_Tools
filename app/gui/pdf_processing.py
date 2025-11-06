@@ -52,19 +52,15 @@ _LABEL_TO_FIELD = {
     "FECHA DE EVALUACIÓN": "fecha_evaluacion",
     "FECHA EVALUACION": "fecha_evaluacion",
     "FECHA EVALUACIÓN": "fecha_evaluacion",
-    "FECHA": "fecha_evaluacion",
     "TIPO DE EQUIPO": "tipo_equipo",
     "TIPO EQUIPO": "tipo_equipo",
     "TIPO DE EQUIPO EVALUADO": "tipo_equipo",
     "TIPO EQUIPO EVALUADO": "tipo_equipo",
     "EQUIPO EVALUADO": "tipo_equipo",
-    "EQUIPO": "tipo_equipo",
     "NOMBRE DE LA INSTITUCION": "nombre_institucion",
     "NOMBRE DE LA INSTITUCIÓN": "nombre_institucion",
     "NOMBRE INSTITUCION": "nombre_institucion",
     "NOMBRE INSTITUCIÓN": "nombre_institucion",
-    "INSTITUCION": "nombre_institucion",
-    "INSTITUCIÓN": "nombre_institucion",
 }
 
 _NORMALIZED_LABELS = {normalize_label(label): field for label, field in _LABEL_TO_FIELD.items()}
@@ -237,10 +233,14 @@ def _looks_like_value(line: str) -> bool:
 
 
 def _read_pdf_text(path: Path) -> str:
+    """Extrae solo la primera página del PDF para evitar ruido de anexos."""
+
     _ensure_pdfplumber()
     with pdfplumber.open(path) as pdf:  # type: ignore[union-attr]
-        pages_text = [page.extract_text() or "" for page in pdf.pages]
-    return "\n".join(pages_text)
+        if not pdf.pages:
+            return ""
+        first_page = pdf.pages[0]
+        return first_page.extract_text() or ""
 
 
 def _ensure_pdfplumber() -> None:
