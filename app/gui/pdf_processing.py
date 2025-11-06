@@ -13,7 +13,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - entorno sin dependencia
 else:  # pragma: no cover - import correcto
     _PDFPLUMBER_ERROR = None
 
-from .text_utils import normalize_label, normalize_value
+from .text_utils import normalize_label, normalize_value, strip_accents
 
 
 @dataclass
@@ -46,10 +46,16 @@ _LABEL_TO_FIELD = {
     "FECHA DE LA VISITA": "fecha_visita",
     "FECHA VISITA": "fecha_visita",
     "FECHA DE VISITA": "fecha_visita",
+    "FECHA DE LA EVALUACION": "fecha_visita",
+    "FECHA DE LA EVALUACIÓN": "fecha_visita",
+    "FECHA DE EVALUACION": "fecha_visita",
+    "FECHA DE EVALUACIÓN": "fecha_visita",
+    "FECHA EVALUACION": "fecha_visita",
+    "FECHA EVALUACIÓN": "fecha_visita",
     "FECHA": "fecha_visita",
     "TIPO DE EQUIPO": "tipo_equipo",
-    "EQUIPO": "tipo_equipo",
     "TIPO EQUIPO": "tipo_equipo",
+    "EQUIPO": "tipo_equipo",
     "NOMBRE DE LA INSTITUCION": "nombre_institucion",
     "NOMBRE DE LA INSTITUCIÓN": "nombre_institucion",
     "NOMBRE INSTITUCION": "nombre_institucion",
@@ -59,6 +65,11 @@ _LABEL_TO_FIELD = {
 }
 
 _NORMALIZED_LABELS = {normalize_label(label): field for label, field in _LABEL_TO_FIELD.items()}
+
+_UPPER_LABELS: List[tuple[str, str, int]] = []
+for raw_label, raw_field in _LABEL_TO_FIELD.items():
+    normalized_label = strip_accents(raw_label).upper()
+    _UPPER_LABELS.append((normalized_label, raw_field, len(normalized_label)))
 
 _REQUIRED_KEYS: Iterable[str] = ("fecha_visita", "tipo_equipo", "nombre_institucion")
 
@@ -94,6 +105,13 @@ def extract_quality_report(path: Path) -> QualityReportResult:
 
     pending_key: str | None = None
     for raw_line in lines:
+        pairs = _extract_pairs_from_line(raw_line)
+        if pairs:
+            for key, value in pairs:
+                result.set_value(key, value)
+            pending_key = None
+            continue
+
         normalized = normalize_label(raw_line)
         matched_key = _match_label(normalized)
         if matched_key:
@@ -122,6 +140,71 @@ def _infer_identifier(path: Path) -> str:
     if prefix.isdigit():
         return normalize_value(prefix)
     return ""
+
+
+def _extract_pairs_from_line(line: str) -> List[tuple[str, str]]:
+    """Detecta pares etiqueta-valor dentro de una sola línea de texto."""
+
+    if not line.strip():
+        return []
+
+    search_text = strip_accents(line).upper()
+    matches = _find_label_matches(search_text)
+    if not matches:
+        return []
+
+    pairs: List[tuple[str, str]] = []
+    for position, (index, label, field) in enumerate(matches):
+        value_start = index + len(label)
+        value_start = _advance_over_separators(line, value_start)
+        next_start = len(line)
+        if position + 1 < len(matches):
+            next_start = matches[position + 1][0]
+        value = line[value_start:next_start].strip(" :.-\t\u2013\u2014")
+        if value:
+            pairs.append((field, value))
+    return pairs
+
+
+def _find_label_matches(text: str) -> List[tuple[int, str, str]]:
+    """Ubica todas las etiquetas conocidas dentro de ``text``."""
+
+    found: List[tuple[int, int, str, str]] = []
+    for label, field, length in _UPPER_LABELS:
+        start = text.find(label)
+        while start != -1:
+            if _has_word_boundaries(text, start, length):
+                found.append((start, length, label, field))
+            start = text.find(label, start + length)
+
+    found.sort(key=lambda item: (item[0], -item[1]))
+
+    filtered: List[tuple[int, str, str]] = []
+    last_end = -1
+    for start, length, label, field in found:
+        if start < last_end:
+            continue
+        filtered.append((start, label, field))
+        last_end = start + length
+
+    return filtered
+
+
+def _has_word_boundaries(text: str, start: int, length: int) -> bool:
+    """Comprueba que la coincidencia esté delimitada por caracteres no alfanuméricos."""
+
+    before = text[start - 1] if start > 0 else " "
+    after_index = start + length
+    after = text[after_index] if after_index < len(text) else " "
+    return not before.isalnum() and not after.isalnum()
+
+
+def _advance_over_separators(original: str, index: int) -> int:
+    """Salta separadores comunes (espacios, dos puntos, guiones)."""
+
+    while index < len(original) and original[index] in {":", " ", "-", "–", "—", "\t", "|", "/"}:
+        index += 1
+    return index
 
 
 def _match_label(normalized_line: str) -> str | None:
