@@ -180,6 +180,7 @@ python gui_app.py
 La interfaz incluye una pestaña adicional para consolidar los reportes de control de calidad almacenados como PDF en una carpeta local.
 
 1. Abre la pestaña **Reportes control de calidad** y pulsa **Seleccionar carpeta…** para elegir la ubicación con los PDFs.
+   * Si ves un aviso indicando que falta `pdfplumber`, instala la dependencia opcional ejecutando `pip install pdfplumber` (o vuelve a correr `pip install -r requirements.txt`).
 2. Presiona **Analizar PDFs**. Cada archivo se procesa en segundo plano y se extraen cuatro campos:
    * **Fecha de la visita** (`fecha_visita` en el JSON)
    * **Tipo de equipo** (`tipo_equipo`)

@@ -5,7 +5,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List
 
-import pdfplumber
+try:
+    import pdfplumber  # type: ignore[import-not-found]
+except ModuleNotFoundError as exc:  # pragma: no cover - entorno sin dependencia
+    pdfplumber = None  # type: ignore[assignment]
+    _PDFPLUMBER_ERROR = exc
+else:  # pragma: no cover - import correcto
+    _PDFPLUMBER_ERROR = None
 
 from .text_utils import normalize_label, normalize_value
 
@@ -60,6 +66,7 @@ _REQUIRED_KEYS: Iterable[str] = ("fecha_visita", "tipo_equipo", "nombre_instituc
 def parse_quality_folder(folder: Path) -> List[QualityReportResult]:
     """Analiza todos los PDF de la carpeta y devuelve sus datos relevantes."""
 
+    _ensure_pdfplumber()
     results: List[QualityReportResult] = []
     for pdf_path in sorted(folder.glob("*.pdf")):
         results.append(extract_quality_report(pdf_path))
@@ -69,6 +76,7 @@ def parse_quality_folder(folder: Path) -> List[QualityReportResult]:
 def extract_quality_report(path: Path) -> QualityReportResult:
     """Extrae información clave del PDF indicado."""
 
+    _ensure_pdfplumber()
     identifier = _infer_identifier(path)
     result = QualityReportResult(path=path, identifier=identifier)
 
@@ -136,6 +144,28 @@ def _looks_like_value(line: str) -> bool:
 
 
 def _read_pdf_text(path: Path) -> str:
-    with pdfplumber.open(path) as pdf:
+    _ensure_pdfplumber()
+    with pdfplumber.open(path) as pdf:  # type: ignore[union-attr]
         pages_text = [page.extract_text() or "" for page in pdf.pages]
     return "\n".join(pages_text)
+
+
+def _ensure_pdfplumber() -> None:
+    if pdfplumber is None:
+        hint = (
+            "Instala la dependencia opcional 'pdfplumber' con `pip install pdfplumber` "
+            "o `pip install -r requirements.txt` para habilitar el análisis de PDFs."
+        )
+        raise RuntimeError(f"La funcionalidad de reportes requiere pdfplumber. {hint}") from _PDFPLUMBER_ERROR
+
+
+def pdf_dependency_status() -> str:
+    """Devuelve un mensaje descriptivo si pdfplumber no está disponible."""
+
+    if pdfplumber is not None:
+        return ""
+    return (
+        "La librería opcional 'pdfplumber' no está instalada. "
+        "Ejecuta `pip install pdfplumber` o `pip install -r requirements.txt` "
+        "para activar la pestaña de reportes de control de calidad."
+    )

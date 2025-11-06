@@ -42,7 +42,11 @@ from .doc_processing import (
 )
 from .text_utils import normalize_value, split_resolution_date
 from .workers import Worker
-from .pdf_processing import QualityReportResult, parse_quality_folder
+from .pdf_processing import (
+    QualityReportResult,
+    parse_quality_folder,
+    pdf_dependency_status,
+)
 
 
 class LicenseGeneratorWindow(QMainWindow):
@@ -189,6 +193,10 @@ class LicenseGeneratorWindow(QMainWindow):
         self.log_qc(f"Carpeta seleccionada: {self.qc_folder}")
 
     def analyze_qc_reports(self) -> None:
+        missing_dep = pdf_dependency_status()
+        if missing_dep:
+            QMessageBox.warning(self, "Dependencia faltante", missing_dep)
+            return
         if not self.qc_folder:
             QMessageBox.warning(self, "Sin carpeta", "Selecciona primero una carpeta con PDFs.")
             return
