@@ -182,14 +182,14 @@ La interfaz incluye una pestaña adicional para consolidar los reportes de contr
 1. Abre la pestaña **Reportes control de calidad** y pulsa **Seleccionar carpeta…** para elegir la ubicación con los PDFs.
    * Si ves un aviso indicando que falta `pdfplumber`, instala la dependencia opcional ejecutando `pip install pdfplumber` (o vuelve a correr `pip install -r requirements.txt`).
 2. Presiona **Analizar PDFs**. Cada archivo se procesa en segundo plano y se extraen cuatro campos:
-   * **Fecha de la visita** (`fecha_visita` en el JSON)
+   * **Fecha de la evaluación** (`fecha_evaluacion` en el JSON)
    * **Tipo de equipo** (`tipo_equipo`)
-   * **Nombre de la institución** (`nombre_institucion`)
+   * **Nombre de la institución** (`nombre_de_la_institucion`)
    * **Identificador**, tomado del prefijo numérico del nombre del archivo (`XX_nombre.pdf → XX`).
 3. Verifica los resultados en la tabla. Cualquier PDF sin texto o con campos faltantes se reporta en la bitácora de la pestaña.
 4. Usa **Exportar JSON** para guardar el resumen en un archivo (`control_calidad.json` por defecto). Se incluye el nombre y ruta original de cada PDF para facilitar trazabilidad.
 
-Para maximizar la detección automática, mantén etiquetas legibles en los PDFs (por ejemplo, «Fecha de la visita: …», «Tipo de equipo: …», «Nombre de la institución: …»). Si una etiqueta aparece en una línea y el valor en la siguiente, el lector también la interpretará correctamente.
+Para maximizar la detección automática, mantén etiquetas legibles en los PDFs (por ejemplo, «Fecha de la evaluación: …», «Tipo de equipo: …», «Nombre de la institución: …»). Si una etiqueta aparece en una línea y el valor en la siguiente, el lector también la interpretará correctamente.
 
 #### Checklist: etiquetas recomendadas
 

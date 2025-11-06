@@ -169,7 +169,13 @@ class LicenseGeneratorWindow(QMainWindow):
         layout = QVBoxLayout(box)
         self.qc_table = QTableWidget(0, 5)
         self.qc_table.setHorizontalHeaderLabels(
-            ["Archivo", "Identificador", "Fecha de visita", "Tipo de equipo", "Institución"]
+            [
+                "Archivo",
+                "Identificador",
+                "Fecha de evaluación",
+                "Tipo de equipo",
+                "Nombre de la institución",
+            ]
         )
         header = self.qc_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
@@ -224,7 +230,7 @@ class LicenseGeneratorWindow(QMainWindow):
             values = [
                 result.path.name,
                 result.identifier,
-                result.fecha_visita,
+                result.fecha_evaluacion,
                 result.tipo_equipo,
                 result.nombre_institucion,
             ]

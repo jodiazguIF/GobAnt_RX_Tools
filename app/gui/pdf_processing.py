@@ -22,7 +22,7 @@ class QualityReportResult:
 
     path: Path
     identifier: str
-    fecha_visita: str = ""
+    fecha_evaluacion: str = ""
     tipo_equipo: str = ""
     nombre_institucion: str = ""
     warnings: List[str] = field(default_factory=list)
@@ -36,25 +36,28 @@ class QualityReportResult:
             "archivo": self.path.name,
             "ruta": str(self.path),
             "identificador": self.identifier,
-            "fecha_visita": self.fecha_visita,
+            "fecha_evaluacion": self.fecha_evaluacion,
             "tipo_equipo": self.tipo_equipo,
-            "nombre_institucion": self.nombre_institucion,
+            "nombre_de_la_institucion": self.nombre_institucion,
         }
 
 
 _LABEL_TO_FIELD = {
-    "FECHA DE LA VISITA": "fecha_visita",
-    "FECHA VISITA": "fecha_visita",
-    "FECHA DE VISITA": "fecha_visita",
-    "FECHA DE LA EVALUACION": "fecha_visita",
-    "FECHA DE LA EVALUACIÓN": "fecha_visita",
-    "FECHA DE EVALUACION": "fecha_visita",
-    "FECHA DE EVALUACIÓN": "fecha_visita",
-    "FECHA EVALUACION": "fecha_visita",
-    "FECHA EVALUACIÓN": "fecha_visita",
-    "FECHA": "fecha_visita",
+    "FECHA DE LA VISITA": "fecha_evaluacion",
+    "FECHA VISITA": "fecha_evaluacion",
+    "FECHA DE VISITA": "fecha_evaluacion",
+    "FECHA DE LA EVALUACION": "fecha_evaluacion",
+    "FECHA DE LA EVALUACIÓN": "fecha_evaluacion",
+    "FECHA DE EVALUACION": "fecha_evaluacion",
+    "FECHA DE EVALUACIÓN": "fecha_evaluacion",
+    "FECHA EVALUACION": "fecha_evaluacion",
+    "FECHA EVALUACIÓN": "fecha_evaluacion",
+    "FECHA": "fecha_evaluacion",
     "TIPO DE EQUIPO": "tipo_equipo",
     "TIPO EQUIPO": "tipo_equipo",
+    "TIPO DE EQUIPO EVALUADO": "tipo_equipo",
+    "TIPO EQUIPO EVALUADO": "tipo_equipo",
+    "EQUIPO EVALUADO": "tipo_equipo",
     "EQUIPO": "tipo_equipo",
     "NOMBRE DE LA INSTITUCION": "nombre_institucion",
     "NOMBRE DE LA INSTITUCIÓN": "nombre_institucion",
@@ -71,7 +74,13 @@ for raw_label, raw_field in _LABEL_TO_FIELD.items():
     normalized_label = strip_accents(raw_label).upper()
     _UPPER_LABELS.append((normalized_label, raw_field, len(normalized_label)))
 
-_REQUIRED_KEYS: Iterable[str] = ("fecha_visita", "tipo_equipo", "nombre_institucion")
+_REQUIRED_KEYS: Iterable[str] = ("fecha_evaluacion", "tipo_equipo", "nombre_institucion")
+
+_REQUIRED_LABELS = {
+    "fecha_evaluacion": "fecha de la evaluación",
+    "tipo_equipo": "tipo de equipo",
+    "nombre_institucion": "nombre de la institución",
+}
 
 
 def parse_quality_folder(folder: Path) -> List[QualityReportResult]:
@@ -129,7 +138,8 @@ def extract_quality_report(path: Path) -> QualityReportResult:
 
     for key in _REQUIRED_KEYS:
         if not getattr(result, key):
-            result.warnings.append(f"Falta el campo {key.replace('_', ' ')}")
+            label = _REQUIRED_LABELS.get(key, key.replace('_', ' '))
+            result.warnings.append(f"Falta el campo {label}")
 
     return result
 
