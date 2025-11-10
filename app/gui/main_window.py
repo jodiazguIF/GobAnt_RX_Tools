@@ -595,6 +595,53 @@ class LicenseGeneratorWindow(QMainWindow):
             if self.current_data.get(key):
                 self._set_field(key, "")
 
+    def _collect_resolution_fields(
+        self,
+        base: Dict[str, str],
+        entry: Optional[Dict[str, str]] = None,
+        *,
+        prefer_entry: bool = False,
+    ) -> tuple[bool, Dict[str, str]]:
+        """Combina los datos de resolución generales con los de un equipo."""
+
+        fields: Dict[str, str] = {}
+        for key in ("RESOLUCION", "FECHA_RESOLUCION", "DIA_EMISION", "MES_EMISION", "ANO_EMISION"):
+            value = base.get(key, "")
+            if value:
+                fields[key] = value
+
+        if entry:
+            entry_resolution = entry.get("RESOLUCION_EQUIPO", "")
+            entry_date = entry.get("FECHA_RESOLUCION_EQUIPO", "")
+
+            if prefer_entry:
+                if entry_resolution:
+                    fields["RESOLUCION"] = entry_resolution
+                if entry_date:
+                    fields["FECHA_RESOLUCION"] = entry_date
+                    for component in ("DIA_EMISION", "MES_EMISION", "ANO_EMISION"):
+                        fields.pop(component, None)
+            else:
+                if entry_resolution and not fields.get("RESOLUCION"):
+                    fields["RESOLUCION"] = entry_resolution
+                if entry_date and not fields.get("FECHA_RESOLUCION"):
+                    fields["FECHA_RESOLUCION"] = entry_date
+
+        date_value = fields.get("FECHA_RESOLUCION")
+        if date_value:
+            parts = split_resolution_date(date_value)
+            if parts:
+                day, month_name, year = parts
+                fields.setdefault("DIA_EMISION", normalize_value(day))
+                fields.setdefault("MES_EMISION", normalize_value(month_name))
+                fields.setdefault("ANO_EMISION", normalize_value(year))
+
+        complete = all(
+            fields.get(key)
+            for key in ("RESOLUCION", "DIA_EMISION", "MES_EMISION", "ANO_EMISION")
+        )
+        return complete, fields
+
     def load_source_document(self) -> None:
         start_dir = self.config.last_open_dir or str(Path.home())
         file_path, _ = QFileDialog.getOpenFileName(
@@ -729,12 +776,6 @@ class LicenseGeneratorWindow(QMainWindow):
             source_stub = output_dir / f"{radicado}_{solicitante.replace(' ', '_')}_CHECKLIST.docx"
 
         include_resolution_flag = self.chk_resolution_paragraph.isChecked()
-        resolution_fields = ["RESOLUCION", "DIA_EMISION", "MES_EMISION", "ANO_EMISION"]
-        has_resolution_data = all(self.current_data.get(field) for field in resolution_fields)
-        if include_resolution_flag and not has_resolution_data:
-            self.log(
-                "Faltan datos de resolución, se omitirá el párrafo que deja sin efecto la resolución previa."
-            )
 
         def resolve_template_path(category: CategoriaTipo) -> Path:
             template_path_str = self.config.templates.resolve_path(persona, category)
@@ -806,13 +847,25 @@ class LicenseGeneratorWindow(QMainWindow):
                 output_name = build_output_name(source_stub, entry_radicado, suffix=suffix)
                 output_path = output_dir / f"{output_name}.docx"
 
+                complete_resolution, resolution_payload = self._collect_resolution_fields(
+                    self.current_data,
+                    entry,
+                    prefer_entry=True,
+                )
+                entry_data.update(resolution_payload)
+                include_resolution = include_resolution_flag and complete_resolution
+                if include_resolution_flag and not complete_resolution:
+                    self.log(
+                        "Equipo"
+                        f" {index}: faltan datos de resolución, se omitirá el párrafo que deja sin efecto la resolución previa."
+                    )
+
                 generate_from_template(
                     template_path,
                     output_path,
                     entry_data,
                     equipment_entries=[entry],
-                    include_resolution_paragraph=
-                    include_resolution_flag and has_resolution_data,
+                    include_resolution_paragraph=include_resolution,
                 )
                 output_paths.append(output_path)
                 self.log(f"Se generó la licencia del equipo {index} en {output_path}.")
@@ -827,12 +880,24 @@ class LicenseGeneratorWindow(QMainWindow):
 
             output_name = build_output_name(source_stub, radicado)
             output_path = output_dir / f"{output_name}.docx"
+            reference_entry = normalized_equipment[0] if normalized_equipment else None
+            complete_resolution, resolution_payload = self._collect_resolution_fields(
+                self.current_data,
+                reference_entry,
+            )
+            generation_data.update(resolution_payload)
+            include_resolution = include_resolution_flag and complete_resolution
+            if include_resolution_flag and not complete_resolution:
+                self.log(
+                    "Faltan datos de resolución, se omitirá el párrafo que deja sin efecto la resolución previa."
+                )
+
             generate_from_template(
                 template_path,
                 output_path,
                 generation_data,
                 equipment_entries=normalized_equipment,
-                include_resolution_paragraph=include_resolution_flag and has_resolution_data,
+                include_resolution_paragraph=include_resolution,
             )
             output_paths.append(output_path)
             self.log(f"Se generó la licencia en {output_path}.")

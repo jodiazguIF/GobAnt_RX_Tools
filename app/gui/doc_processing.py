@@ -147,6 +147,13 @@ def extract_from_docx(path: Path) -> DocumentData:
         if any(fallback.values()):
             cleaned_equipment.append(fallback)
 
+    if cleaned_equipment:
+        first_equipment = cleaned_equipment[0]
+        if first_equipment.get("RESOLUCION_EQUIPO") and not data.get("RESOLUCION"):
+            data["RESOLUCION"] = first_equipment["RESOLUCION_EQUIPO"]
+        if first_equipment.get("FECHA_RESOLUCION_EQUIPO") and not data.get("FECHA_RESOLUCION"):
+            data["FECHA_RESOLUCION"] = first_equipment["FECHA_RESOLUCION_EQUIPO"]
+
     persona = PersonaTipo.from_text(data.get("TIPO_SOLICITANTE", ""))
     categoria = CategoriaTipo.from_text(data.get("CATEGORIA", ""))
     if categoria is None:
@@ -823,12 +830,14 @@ def _detect_section(row: _Row) -> Optional[str]:
 def _resolve_field_key(label_norm: str, section: Optional[str]) -> Optional[str]:
     """Obtiene la clave asociada a una etiqueta considerando la sección."""
 
+    if section:
+        mapping = SECTION_LABEL_TO_FIELD.get(section, {})
+        key = mapping.get(label_norm)
+        if key:
+            return key
     key = LABEL_TO_FIELD.get(label_norm)
     if key:
         return key
-    if section:
-        mapping = SECTION_LABEL_TO_FIELD.get(section, {})
-        return mapping.get(label_norm)
     return None
 
 
@@ -836,6 +845,7 @@ _LABEL_HINT_KEYWORDS = (
     "RADIC",
     "FECHA",
     "CATEG",
+    "RESOL",
     "SOLICIT",
     "REPRESENT",
     "NIT",
