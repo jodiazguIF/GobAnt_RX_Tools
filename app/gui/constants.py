@@ -99,7 +99,7 @@ FIELDS: List[FieldDefinition] = [
 ]
 
 
-HIDDEN_KEYS: Set[str] = {"SUBREGION"}
+HIDDEN_KEYS: Set[str] = {"SUBREGION", "PARRAFO_RESOLUCION"}
 
 
 # Mapeo de etiquetas encontradas en los documentos fuente hacia las claves estándar.

@@ -259,6 +259,7 @@ _RESOLUTION_PLACEHOLDER_KEYS = {
     normalize_placeholder_key("DIA"),
     normalize_placeholder_key("MES"),
     normalize_placeholder_key("ANO"),
+    normalize_placeholder_key("PARRAFO_RESOLUCION"),
 }
 
 
@@ -272,12 +273,48 @@ def generate_from_template(
     """Crea un documento a partir de la plantilla y lo guarda."""
 
     document = Document(str(template_path))
+
+    working_data = dict(data)
+    if include_resolution_paragraph:
+        paragraph_text = _build_resolution_paragraph(working_data)
+        if paragraph_text:
+            working_data["PARRAFO_RESOLUCION"] = paragraph_text
+        else:
+            include_resolution_paragraph = False
+
     if not include_resolution_paragraph:
         _remove_resolution_paragraph(document)
-    expanded = _expand_placeholder_aliases(data)
+        working_data["PARRAFO_RESOLUCION"] = ""
+
+    expanded = _expand_placeholder_aliases(working_data)
     replace_placeholders(document, expanded)
     document.save(str(output_path))
     return output_path
+
+
+def _build_resolution_paragraph(data: Dict[str, str]) -> str:
+    """Construye el texto del párrafo que deja sin efecto la resolución previa."""
+
+    required = {
+        "RESOLUCION": "",
+        "DIA_EMISION": "",
+        "MES_EMISION": "",
+        "ANO_EMISION": "",
+    }
+
+    for key in required:
+        value = normalize_value(data.get(key, ""))
+        if not value:
+            return ""
+        required[key] = value
+
+    paragraph = (
+        "Este acto administrativo deja sin efecto la Resolución No "
+        f"{required['RESOLUCION']} del {required['DIA_EMISION']} de "
+        f"{required['MES_EMISION']} de {required['ANO_EMISION']}, mediante la cual se "
+        "había concedido licencia de práctica médica para este equipo de Rayos X."
+    )
+    return normalize_value(paragraph)
 
 
 def _expand_placeholder_aliases(data: Dict[str, str]) -> Dict[str, str]:
