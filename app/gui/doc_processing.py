@@ -124,10 +124,8 @@ def extract_from_docx(path: Path) -> DocumentData:
 
                 value = normalize_value(entry.value)
                 if key in EQUIPMENT_FIELD_KEYS:
-                    if (
-                        current_equipment
-                        and any(current_equipment.values())
-                        and key in {"TIPO_DE_EQUIPO", "PRACTICA", "MARCA"}
+                    if key == "TIPO_DE_EQUIPO" and current_equipment and any(
+                        current_equipment.values()
                     ):
                         finalize_equipment()
                     if current_equipment is None:
