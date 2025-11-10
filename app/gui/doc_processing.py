@@ -133,11 +133,16 @@ def extract_from_docx(path: Path) -> DocumentData:
 
                 value = normalize_value(entry.value)
                 in_equipment_section = current_section == "EQUIPOS A LICENCIAR"
-                if key in EQUIPMENT_FIELD_KEYS and (in_equipment_section or current_equipment):
-                    if key == "TIPO_DE_EQUIPO" and current_equipment and any(
-                        current_equipment.values()
-                    ):
-                        finalize_equipment()
+                if key in EQUIPMENT_FIELD_KEYS and (
+                    in_equipment_section or current_equipment
+                ):
+                    if current_equipment and any(current_equipment.values()):
+                        existing = current_equipment.get(key, "")
+                        if (
+                            (key == "TIPO_DE_EQUIPO")
+                            or (existing and value and existing != value)
+                        ):
+                            finalize_equipment()
                     if current_equipment is None:
                         current_equipment = {}
                     current_equipment[key] = value
@@ -900,7 +905,9 @@ def _looks_like_label(text: str, normalized: str) -> bool:
     return False
 
 
-_EQUIPMENT_HEADER_RE = re.compile(r"^EQUIPO(\s+\d+)?$")
+_EQUIPMENT_HEADER_RE = re.compile(
+    r"^EQUIPO(?:\s+(?:NO\.?|N[º°])\s*)?(?:\s*\d+)?[\s:.-]*$"
+)
 
 
 def _is_equipment_header_row(row: _Row) -> bool:
