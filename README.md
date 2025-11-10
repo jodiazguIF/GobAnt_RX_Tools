@@ -201,6 +201,8 @@ Para maximizar la detección automática, mantén etiquetas legibles en los PDFs
 
 Para que el lector de tablas reconozca cada dato automáticamente, asegúrate de que las celdas de la tabla contengan una de las siguientes etiquetas (negrilla y con dos puntos opcional). Es válido que la etiqueta esté seguida del valor en la misma celda o que el valor esté en la celda contigua.
 
+*Para los radicados, fechas y resoluciones específicas de cada equipo, coloca las etiquetas dentro de la sección «EQUIPOS A LICENCIAR». El lector acepta variantes con guiones bajos (`RADICADO_E`, `FECHA_RADICACION_E`, `RESOLUCION_E`, etc.) o con la palabra «EQUIPO» en el rótulo.*
+
 | Campo en la app/plantilla (`{{CLAVE}}`) | Texto sugerido en el checklist |
 | --- | --- |
 | `{{NOMBRE_SOLICITANTE}}` | `NOMBRE O RAZÓN SOCIAL` / `RAZON SOCIAL` |
@@ -212,13 +214,15 @@ Para que el lector de tablas reconozca cada dato automáticamente, asegúrate de
 | `{{EMPRESA_QC}}` | `EMPRESA CONTROL CALIDAD` / `EMPRESA QUE REALIZÓ EL CONTROL DE CALIDAD` *(o simplemente `EMPRESA` dentro de la sección «CONTROL DE CALIDAD»)* |
 | `{{FECHA_QC}}` | `FECHA CONTROL CALIDAD` / `FECHA DEL CONTROL DE CALIDAD` *(o `FECHA` dentro de la sección «CONTROL DE CALIDAD»)* |
 | `{{SERIE}}` | `SERIE` / `NÚMERO DE SERIE` |
-| `{{CATEGORIA_EQUIPO}}` | `CATEGORÍA EQUIPO` / `CATEGORIA EQUIPO` |
-| `{{RADICADO_EQUIPO}}` | `RADICADO EQUIPO` / `RADICADO DEL EQUIPO` |
+| `{{CATEGORIA_EQUIPO}}` | `CATEGORÍA EQUIPO` / `CATEGORIA EQUIPO` / `CATEGORIA_E` *(en la sección «EQUIPOS A LICENCIAR»)* |
+| `{{RADICADO}}` | `RADICADO` *(encabezado general)* |
+| `{{RADICADO_EQUIPO}}` | `RADICADO EQUIPO` / `RADICADO DEL EQUIPO` / `RADICADO_E` *(en «EQUIPOS A LICENCIAR»)* |
+| `{{FECHA_RADICACION}}` | `FECHA RADICACIÓN` / `FECHA RADICACION` / `FECHA_RADICACION_E` *(en «EQUIPOS A LICENCIAR», formato dd/mm/aaaa)* |
 | `{{CATEGORIA}}` | `CATEGORÍA` / `CATEGORÍA LICENCIA` |
-| `{{RESOLUCION}}` | `RESOLUCIÓN` / `NÚMERO DE RESOLUCIÓN` |
-| `{{FECHA_RESOLUCION}}` | `FECHA RESOLUCIÓN` / `FECHA DE LA RESOLUCIÓN` *(formato dd/mm/aaaa)* |
-| `{{RESOLUCION_EQUIPO}}` | `RESOLUCIÓN EQUIPO` / `RESOLUCIÓN DEL EQUIPO` *(en la sección «EQUIPOS A LICENCIAR»)* |
-| `{{FECHA_RESOLUCION_EQUIPO}}` | `FECHA RESOLUCIÓN EQUIPO` / `FECHA RESOLUCIÓN DEL EQUIPO` *(formato dd/mm/aaaa dentro de «EQUIPOS A LICENCIAR»)* |
+| `{{RESOLUCION}}` | `RESOLUCIÓN` / `NÚMERO DE RESOLUCIÓN` *(si aplica a todos los equipos)* |
+| `{{FECHA_RESOLUCION}}` | `FECHA RESOLUCIÓN` / `FECHA DE LA RESOLUCIÓN` *(formato dd/mm/aaaa y aplica a todos los equipos)* |
+| `{{RESOLUCION_EQUIPO}}` | `RESOLUCIÓN EQUIPO` / `RESOLUCION_E` / `RESOLUCIÓN DEL EQUIPO` *(en «EQUIPOS A LICENCIAR»)* |
+| `{{FECHA_RESOLUCION_EQUIPO}}` | `FECHA RESOLUCIÓN EQUIPO` / `FECHA_RESOLUCION_E` / `FECHA RESOLUCIÓN DEL EQUIPO` *(formato dd/mm/aaaa dentro de «EQUIPOS A LICENCIAR»)* |
 | `{{FECHA_HOY}}` | Campo agregado manualmente en la plantilla para la fecha de expedición del documento. No se extrae del checklist; la app lo completa con la fecha actual en formato `dd-mm-aaaa` (sin aplicar negrilla). |
 | `{{DATOS_TUBO}}` | Reemplaza el segmento “Marca/Modelo/Número de serie” del tubo; se omite automáticamente cuando las celdas del checklist dicen “NO REGISTRA”. |
 | `{{LISTA_EQUIPOS}}` | Inserta la lista numerada de equipos en plantillas con múltiples dispositivos licenciados. Debe ubicarse en un párrafo independiente. |

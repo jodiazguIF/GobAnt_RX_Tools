@@ -123,7 +123,8 @@ def extract_from_docx(path: Path) -> DocumentData:
                     continue
 
                 value = normalize_value(entry.value)
-                if key in EQUIPMENT_FIELD_KEYS:
+                in_equipment_section = current_section == "EQUIPOS A LICENCIAR"
+                if key in EQUIPMENT_FIELD_KEYS and (in_equipment_section or current_equipment):
                     if key == "TIPO_DE_EQUIPO" and current_equipment and any(
                         current_equipment.values()
                     ):

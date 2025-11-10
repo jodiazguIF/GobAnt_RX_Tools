@@ -632,8 +632,14 @@ class LicenseGeneratorWindow(QMainWindow):
                 fields[key] = value
 
         if entry:
-            entry_resolution = entry.get("RESOLUCION_EQUIPO", "")
-            entry_date = entry.get("FECHA_RESOLUCION_EQUIPO", "")
+            entry_resolution = (
+                entry.get("RESOLUCION")
+                or entry.get("RESOLUCION_EQUIPO", "")
+            )
+            entry_date = (
+                entry.get("FECHA_RESOLUCION")
+                or entry.get("FECHA_RESOLUCION_EQUIPO", "")
+            )
 
             if prefer_entry:
                 if entry_resolution:
@@ -642,11 +648,21 @@ class LicenseGeneratorWindow(QMainWindow):
                     fields["FECHA_RESOLUCION"] = entry_date
                     for component in ("DIA_EMISION", "MES_EMISION", "ANO_EMISION"):
                         fields.pop(component, None)
+                for component in ("DIA_EMISION", "MES_EMISION", "ANO_EMISION"):
+                    component_value = entry.get(component, "")
+                    if component_value:
+                        fields[component] = component_value
             else:
                 if entry_resolution and not fields.get("RESOLUCION"):
                     fields["RESOLUCION"] = entry_resolution
                 if entry_date and not fields.get("FECHA_RESOLUCION"):
                     fields["FECHA_RESOLUCION"] = entry_date
+                for component in ("DIA_EMISION", "MES_EMISION", "ANO_EMISION"):
+                    if fields.get(component):
+                        continue
+                    component_value = entry.get(component, "")
+                    if component_value:
+                        fields[component] = component_value
 
         date_value = fields.get("FECHA_RESOLUCION")
         if date_value:
@@ -756,6 +772,17 @@ class LicenseGeneratorWindow(QMainWindow):
         if normalized_equipment:
             self.equipment_entries = normalized_equipment
 
+        primary_radicado = self.current_data.get("RADICADO", "")
+        if normalized_equipment and not primary_radicado:
+            first_entry = normalized_equipment[0]
+            primary_radicado = (
+                first_entry.get("RADICADO")
+                or first_entry.get("RADICADO_EQUIPO")
+                or ""
+            )
+            if primary_radicado:
+                self.current_data["RADICADO"] = primary_radicado
+
         categoria = resolve_category(
             self.current_data.get("CATEGORIA", ""),
             self.current_data.get("TIPO_DE_EQUIPO", ""),
@@ -775,7 +802,7 @@ class LicenseGeneratorWindow(QMainWindow):
 
         self.current_data["CATEGORIA"] = categoria.value
 
-        radicado = self.current_data.get("RADICADO", "")
+        radicado = primary_radicado or self.current_data.get("RADICADO", "")
         if not radicado:
             raise ValueError("El campo Radicado es obligatorio para nombrar el archivo.")
 
@@ -820,7 +847,11 @@ class LicenseGeneratorWindow(QMainWindow):
         ]
         equipment_radicados = []
         for entry in normalized_equipment:
-            equipment_rad = entry.get("RADICADO_EQUIPO") or radicado
+            equipment_rad = (
+                entry.get("RADICADO_EQUIPO")
+                or entry.get("RADICADO")
+                or radicado
+            )
             if equipment_rad:
                 entry.setdefault("RADICADO_EQUIPO", equipment_rad)
             equipment_radicados.append(equipment_rad)
@@ -866,6 +897,10 @@ class LicenseGeneratorWindow(QMainWindow):
                     entry_data["CATEGORIA_EQUIPO"] = entry_category.value
                 for key in EQUIPMENT_FIELD_KEYS:
                     entry_data[key] = entry.get(key, "")
+                if entry_data.get("RESOLUCION") and not entry_data.get("RESOLUCION_EQUIPO"):
+                    entry_data["RESOLUCION_EQUIPO"] = entry_data["RESOLUCION"]
+                if entry_data.get("FECHA_RESOLUCION") and not entry_data.get("FECHA_RESOLUCION_EQUIPO"):
+                    entry_data["FECHA_RESOLUCION_EQUIPO"] = entry_data["FECHA_RESOLUCION"]
 
                 template_path = resolve_template_path(entry_category)
                 suffix = None
@@ -904,6 +939,16 @@ class LicenseGeneratorWindow(QMainWindow):
                 first_equipment = normalized_equipment[0]
                 for key in EQUIPMENT_FIELD_KEYS:
                     generation_data[key] = first_equipment.get(key, "")
+                if (
+                    generation_data.get("RESOLUCION")
+                    and not generation_data.get("RESOLUCION_EQUIPO")
+                ):
+                    generation_data["RESOLUCION_EQUIPO"] = generation_data["RESOLUCION"]
+                if (
+                    generation_data.get("FECHA_RESOLUCION")
+                    and not generation_data.get("FECHA_RESOLUCION_EQUIPO")
+                ):
+                    generation_data["FECHA_RESOLUCION_EQUIPO"] = generation_data["FECHA_RESOLUCION"]
 
             output_name = build_output_name(source_stub, radicado)
             output_path = output_dir / f"{output_name}.docx"
