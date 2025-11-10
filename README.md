@@ -203,6 +203,8 @@ Para que el lector de tablas reconozca cada dato automáticamente, asegúrate de
 
 *Para los radicados, fechas y resoluciones específicas de cada equipo, coloca las etiquetas dentro de la sección «EQUIPOS A LICENCIAR». El lector acepta variantes con guiones bajos (`RADICADO_E`, `FECHA_RADICACION_E`, `RESOLUCION_E`, etc.) o con la palabra «EQUIPO» en el rótulo.*
 
+*Cuando registres más de un equipo en la misma tabla, inserta una fila separadora con textos como `EQUIPO 1`, `EQUIPO 2`, etc. Esa fila ayuda a la app a cerrar el bloque anterior antes de empezar el siguiente y evita que los datos se mezclen.*
+
 | Campo en la app/plantilla (`{{CLAVE}}`) | Texto sugerido en el checklist |
 | --- | --- |
 | `{{NOMBRE_SOLICITANTE}}` | `NOMBRE O RAZÓN SOCIAL` / `RAZON SOCIAL` |

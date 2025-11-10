@@ -113,6 +113,15 @@ def extract_from_docx(path: Path) -> DocumentData:
             section = _detect_section(row)
             if section:
                 current_section = section
+                if current_section != "EQUIPOS A LICENCIAR":
+                    finalize_equipment()
+                continue
+            if (
+                current_section == "EQUIPOS A LICENCIAR"
+                and _is_equipment_header_row(row)
+            ):
+                finalize_equipment()
+                current_equipment = None
                 continue
             for entry in _parse_row_entries(row):
                 label_norm = normalize_label(entry.label)
@@ -887,6 +896,29 @@ def _looks_like_label(text: str, normalized: str) -> bool:
     for hint in _LABEL_HINT_KEYWORDS:
         if hint in normalized:
             return True
+
+    return False
+
+
+_EQUIPMENT_HEADER_RE = re.compile(r"^EQUIPO(\s+\d+)?$")
+
+
+def _is_equipment_header_row(row: _Row) -> bool:
+    """Determina si una fila corresponde al encabezado de un equipo."""
+
+    texts = [cell.text.strip() for cell in row.cells if cell.text and cell.text.strip()]
+    if not texts:
+        return False
+
+    candidate = " ".join(texts)
+    normalized = normalize_label(candidate)
+    if not normalized:
+        return False
+
+    if normalized.startswith("EQUIPO"):
+        if "A LICENCIAR" in normalized or "TIPO" in normalized:
+            return False
+        return bool(_EQUIPMENT_HEADER_RE.match(normalized))
 
     return False
 
