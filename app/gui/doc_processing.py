@@ -829,14 +829,28 @@ def _detect_section(row: _Row) -> Optional[str]:
     if not texts:
         return None
 
-    candidate = " ".join(texts)
+    dedup_texts: List[str] = []
+    seen_norm: List[str] = []
+    for text in texts:
+        normalized_text = normalize_label(text)
+        if not normalized_text:
+            continue
+        if seen_norm and normalized_text == seen_norm[-1]:
+            continue
+        seen_norm.append(normalized_text)
+        dedup_texts.append(text)
+
+    if not dedup_texts:
+        return None
+
+    candidate = " ".join(dedup_texts)
     normalized = normalize_label(candidate)
     if normalized in SECTION_LABEL_TO_FIELD:
         return normalized
 
-    if len(texts) != 1:
+    if len(dedup_texts) != 1:
         return None
-    normalized = normalize_label(texts[0])
+    normalized = normalize_label(dedup_texts[0])
     if normalized in SECTION_LABEL_TO_FIELD:
         return normalized
     return None
@@ -917,7 +931,21 @@ def _is_equipment_header_row(row: _Row) -> bool:
     if not texts:
         return False
 
-    candidate = " ".join(texts)
+    dedup_texts: List[str] = []
+    seen_norm: List[str] = []
+    for text in texts:
+        normalized_text = normalize_label(text)
+        if not normalized_text:
+            continue
+        if seen_norm and normalized_text == seen_norm[-1]:
+            continue
+        seen_norm.append(normalized_text)
+        dedup_texts.append(text)
+
+    if not dedup_texts:
+        return False
+
+    candidate = " ".join(dedup_texts)
     normalized = normalize_label(candidate)
     if not normalized:
         return False
