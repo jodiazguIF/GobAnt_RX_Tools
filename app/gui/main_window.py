@@ -110,15 +110,36 @@ class LicenseGeneratorWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         form_container = QWidget()
-        form_layout = QFormLayout(form_container)
-        form_layout.setLabelAlignment(Qt.AlignRight)  # type: ignore[name-defined]
+        container_layout = QVBoxLayout(form_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(16)
 
-        for field in FIELDS:
+        general_fields = [field for field in FIELDS if field.key not in EQUIPMENT_FIELD_KEYS]
+        equipment_fields = [field for field in FIELDS if field.key in EQUIPMENT_FIELD_KEYS]
+
+        general_box = QGroupBox("Datos generales del trámite")
+        general_layout = QFormLayout(general_box)
+        general_layout.setLabelAlignment(Qt.AlignRight)  # type: ignore[name-defined]
+        for field in general_fields:
             input_widget = self._create_input_for_field(field.key, field.multiline)
             self.field_inputs[field.key] = input_widget
             label = QLabel(field.label + (" *" if field.required else ""))
             label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
-            form_layout.addRow(label, input_widget)
+            general_layout.addRow(label, input_widget)
+
+        equipment_box = QGroupBox("Datos del equipo seleccionado")
+        equipment_layout = QFormLayout(equipment_box)
+        equipment_layout.setLabelAlignment(Qt.AlignRight)  # type: ignore[name-defined]
+        for field in equipment_fields:
+            input_widget = self._create_input_for_field(field.key, field.multiline)
+            self.field_inputs[field.key] = input_widget
+            label = QLabel(field.label + (" *" if field.required else ""))
+            label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+            equipment_layout.addRow(label, input_widget)
+
+        container_layout.addWidget(general_box)
+        container_layout.addWidget(equipment_box)
+        container_layout.addStretch(1)
 
         scroll.setWidget(form_container)
         layout.addWidget(scroll)
@@ -804,12 +825,18 @@ class LicenseGeneratorWindow(QMainWindow):
                 entry.setdefault("RADICADO_EQUIPO", equipment_rad)
             equipment_radicados.append(equipment_rad)
 
-        unique_categories = {cat.value for cat in equipment_categories if cat}
         unique_radicados = {rad for rad in equipment_radicados if rad}
-        should_split = (
-            len(normalized_equipment) > 1
-            and (len(unique_categories) > 1 or len(unique_radicados) > 1)
-        )
+        should_split = len(normalized_equipment) > 1 and len(unique_radicados) > 1
+
+        category_set = {cat.value for cat in equipment_categories if cat}
+        if (
+            not should_split
+            and len(normalized_equipment) > 1
+            and len(category_set) > 1
+        ):
+            self.log(
+                "Se detectaron equipos con categorías distintas pero el mismo radicado; se generará una única licencia."
+            )
 
         output_paths: List[Path] = []
 
