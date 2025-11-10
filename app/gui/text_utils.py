@@ -101,8 +101,7 @@ def split_resolution_date(value: str) -> Optional[Tuple[str, str, str]]:
 
 
 def format_today_date(reference: Optional[date] = None) -> str:
-    """Devuelve la fecha actual en formato ``D DE MES DE AAAA``."""
+    """Devuelve la fecha actual en formato ``dd-mm-aaaa``."""
 
     current = reference or date.today()
-    month_name = MONTH_NAMES_ES[current.month]
-    return f"{current.day} DE {month_name} DE {current.year}"
+    return f"{current.day:02d}-{current.month:02d}-{current.year}"

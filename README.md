@@ -167,7 +167,7 @@ python gui_app.py
    * Presiona **Generar licencia**. El archivo se crea junto al documento fuente (o en la carpeta elegida manualmente) con el patrón `RADICADO_SOLICITANTE_LICENCIA.docx`.
    * Activa la casilla **Incluir párrafo que deja sin efecto una resolución previa** si tu plantilla contiene ese texto y cuentas con los datos de resolución (`{{RESOLUCION}}`, `{{DIA}}`/`{{DIA_EMISION}}`, `{{MES}}`/`{{MES_EMISION}}`, `{{AÑO}}`/`{{AÑO_EMISION}}`). Si falta alguno, la aplicación omitirá automáticamente el párrafo aunque la casilla esté marcada.
    * En la plantilla, ubica el lugar exacto donde debe ir el texto y escribe únicamente el marcador `{{PARRAFO_RESOLUCION}}` en un párrafo independiente. Cuando la casilla esté activa, el marcador se reemplazará por “Este acto administrativo deja sin efecto la Resolución No {{RESOLUCION}}…” con los datos correspondientes; si la casilla está desactivada o los datos son incompletos, el párrafo se elimina por completo. El reemplazo conserva el formato en mayúsculas/minúsculas habitual y solo resalta en negrilla la sección “Resolución No {{RESOLUCION}} del {{DIA}} de {{MES}} de {{AÑO}}”.
-   * Si tu plantilla incluye la fecha de expedición del documento (`{{FECHA_HOY}}`), la interfaz la rellena automáticamente con la fecha del día en que generas la licencia (formato `D DE MES DE AAAA`).
+   * Si tu plantilla incluye la fecha de expedición del documento (`{{FECHA_HOY}}`), la interfaz la rellena automáticamente con la fecha del día en que generas la licencia (formato `dd-mm-aaaa`).
    * Al finalizar, la bitácora inferior muestra el resultado o posibles errores.
 5. **(Opcional) Sube a Drive y ejecuta el pipeline.**
    * Activa **Subir licencia a Drive y ejecutar pipeline** para reutilizar la configuración de `app/config.py` y disparar la ingesta automática tras la generación.
@@ -210,7 +210,7 @@ Para que el lector de tablas reconozca cada dato automáticamente, asegúrate de
 | `{{CATEGORIA}}` | `CATEGORÍA` / `CATEGORÍA LICENCIA` |
 | `{{RESOLUCION}}` | `RESOLUCIÓN` / `NÚMERO DE RESOLUCIÓN` |
 | `{{FECHA_RESOLUCION}}` | `FECHA RESOLUCIÓN` / `FECHA DE LA RESOLUCIÓN` *(formato dd/mm/aaaa)* |
-| `{{FECHA_HOY}}` | Campo agregado manualmente en la plantilla para la fecha de expedición del documento. No se extrae del checklist; la app lo completa con la fecha actual. |
+| `{{FECHA_HOY}}` | Campo agregado manualmente en la plantilla para la fecha de expedición del documento. No se extrae del checklist; la app lo completa con la fecha actual en formato `dd-mm-aaaa`. |
 | `{{DIA_EMISION}}` o `{{DIA}}` | `DÍA EMISIÓN` / `DÍA` |
 | `{{MES_EMISION}}` o `{{MES}}` | `MES EMISIÓN` / `MES` |
 | `{{AÑO_EMISION}}` o `{{AÑO}}` | `AÑO EMISIÓN` / `AÑO` |
