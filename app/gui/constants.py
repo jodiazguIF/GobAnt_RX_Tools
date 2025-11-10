@@ -102,6 +102,29 @@ FIELDS: List[FieldDefinition] = [
 HIDDEN_KEYS: Set[str] = {"SUBREGION", "PARRAFO_RESOLUCION"}
 
 
+EQUIPMENT_FIELD_KEYS: Set[str] = {
+    "TIPO_DE_EQUIPO",
+    "PRACTICA",
+    "MARCA",
+    "MODELO",
+    "SERIE",
+    "FECHA_FABRICACION",
+    "MARCA_TUBO",
+    "MODELO_TUBO",
+    "SERIE_TUBO",
+    "FECHA_FABRICACION_TUBO",
+    "KV",
+    "MA",
+    "W",
+    "UBICACION_EQUIPO",
+    "EMPRESA_QC",
+    "FECHA_QC",
+}
+
+
+TUBE_FIELD_KEYS: Set[str] = {"MARCA_TUBO", "MODELO_TUBO", "SERIE_TUBO"}
+
+
 # Mapeo de etiquetas encontradas en los documentos fuente hacia las claves estándar.
 LABEL_TO_FIELD: Dict[str, str] = {
     "RADICADO": "RADICADO",

@@ -33,7 +33,13 @@ from PySide6.QtWidgets import (
 from app.config import settings
 from app.pipeline.ingest import IngestPipeline
 from .config_store import GuiConfig, load_config, save_config
-from .constants import CategoriaTipo, FIELDS, HIDDEN_KEYS, PersonaTipo
+from .constants import (
+    CategoriaTipo,
+    EQUIPMENT_FIELD_KEYS,
+    FIELDS,
+    HIDDEN_KEYS,
+    PersonaTipo,
+)
 from .doc_processing import (
     build_output_name,
     extract_from_docx,
@@ -63,6 +69,12 @@ class LicenseGeneratorWindow(QMainWindow):
         self.current_data: Dict[str, str] = {field.key: "" for field in FIELDS}
         for key in HIDDEN_KEYS:
             self.current_data[key] = ""
+        self.equipment_entries: List[Dict[str, str]] = []
+        self.current_equipment_index: Optional[int] = None
+        self.equipment_combo: Optional[QComboBox] = None
+        self.equipment_count_label: Optional[QLabel] = None
+        self.remove_equipment_button: Optional[QPushButton] = None
+        self._loading_equipment = False
         self.pipeline: Optional[IngestPipeline] = None
         self.license_log: Optional[QPlainTextEdit] = None
         self.pipeline_log: Optional[QPlainTextEdit] = None
@@ -75,6 +87,7 @@ class LicenseGeneratorWindow(QMainWindow):
         self.qc_results: List[QualityReportResult] = []
 
         self._init_ui()
+        self._initialize_equipment_state()
         self._ensure_today_field()
 
     # ------------------------------------------------------------------ UI
@@ -91,6 +104,7 @@ class LicenseGeneratorWindow(QMainWindow):
 
         layout.addWidget(self._build_file_section())
         layout.addWidget(self._build_templates_section())
+        layout.addWidget(self._build_equipment_section())
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -300,6 +314,30 @@ class LicenseGeneratorWindow(QMainWindow):
         layout.addRow(save_btn)
         return box
 
+    def _build_equipment_section(self) -> QGroupBox:
+        box = QGroupBox("Equipos a licenciar")
+        layout = QHBoxLayout(box)
+
+        self.equipment_count_label = QLabel("Equipos detectados: 0")
+        layout.addWidget(self.equipment_count_label)
+
+        self.equipment_combo = QComboBox()
+        self.equipment_combo.currentIndexChanged.connect(self._on_equipment_changed)
+        layout.addWidget(QLabel("Equipo en edición:"))
+        layout.addWidget(self.equipment_combo)
+
+        add_btn = QPushButton("Agregar equipo")
+        add_btn.clicked.connect(self.add_equipment_entry)
+        layout.addWidget(add_btn)
+
+        remove_btn = QPushButton("Eliminar equipo")
+        remove_btn.clicked.connect(self.remove_equipment_entry)
+        self.remove_equipment_button = remove_btn
+        layout.addWidget(remove_btn)
+
+        layout.addStretch(1)
+        return box
+
     def _build_actions_section(self) -> QGroupBox:
         box = QGroupBox("Generación")
         layout = QHBoxLayout(box)
@@ -381,6 +419,8 @@ class LicenseGeneratorWindow(QMainWindow):
     def _set_field(self, key: str, value: str) -> None:
         normalized = normalize_value(value)
         self.current_data[key] = normalized
+        if key in EQUIPMENT_FIELD_KEYS:
+            self._update_equipment_entry_field(key, normalized)
         widget = self.field_inputs.get(key)
         if isinstance(widget, QLineEdit) and widget.text() != normalized:
             widget.blockSignals(True)
@@ -410,7 +450,113 @@ class LicenseGeneratorWindow(QMainWindow):
         if key == "FECHA_HOY" and not normalized:
             self._ensure_today_field(force=True)
 
-    def clear_form(self) -> None:
+    def _update_equipment_entry_field(self, key: str, value: str) -> None:
+        if self._loading_equipment:
+            return
+        index = self.current_equipment_index
+        if index is None:
+            return
+        if not (0 <= index < len(self.equipment_entries)):
+            return
+        self.equipment_entries[index][key] = value
+
+    def _initialize_equipment_state(
+        self, entries: Optional[List[Dict[str, str]]] = None
+    ) -> None:
+        normalized: List[Dict[str, str]] = []
+        if entries:
+            for entry in entries:
+                normalized_entry = self._normalize_equipment_entry(entry)
+                if any(normalized_entry.values()):
+                    normalized.append(normalized_entry)
+        if not normalized:
+            normalized = [self._blank_equipment_entry()]
+        self.equipment_entries = normalized
+        self.current_equipment_index = 0
+        self._load_equipment_into_form(0)
+        self._refresh_equipment_combo()
+        self._update_equipment_count_label()
+
+    def _blank_equipment_entry(self) -> Dict[str, str]:
+        return {key: "" for key in EQUIPMENT_FIELD_KEYS}
+
+    def _normalize_equipment_entry(self, entry: Dict[str, str]) -> Dict[str, str]:
+        return {key: normalize_value(entry.get(key, "")) for key in EQUIPMENT_FIELD_KEYS}
+
+    def _refresh_equipment_combo(self) -> None:
+        if not self.equipment_combo:
+            return
+        self.equipment_combo.blockSignals(True)
+        self.equipment_combo.clear()
+        for idx in range(len(self.equipment_entries)):
+            self.equipment_combo.addItem(f"Equipo {idx + 1}")
+        if self.current_equipment_index is not None and self.equipment_entries:
+            self.equipment_combo.setCurrentIndex(self.current_equipment_index)
+        self.equipment_combo.blockSignals(False)
+
+    def _update_equipment_count_label(self) -> None:
+        if self.equipment_count_label:
+            self.equipment_count_label.setText(
+                f"Equipos detectados: {len(self.equipment_entries)}"
+            )
+        if self.remove_equipment_button:
+            self.remove_equipment_button.setEnabled(len(self.equipment_entries) > 1)
+
+    def _load_equipment_into_form(self, index: int) -> None:
+        if not self.equipment_entries:
+            self.current_equipment_index = None
+            return
+        index = max(0, min(index, len(self.equipment_entries) - 1))
+        entry = self.equipment_entries[index]
+        self._loading_equipment = True
+        for key in EQUIPMENT_FIELD_KEYS:
+            self._set_field(key, entry.get(key, ""))
+        self._loading_equipment = False
+        self.current_equipment_index = index
+
+    def _sync_form_to_equipment(self, index: Optional[int]) -> None:
+        if index is None:
+            return
+        if not (0 <= index < len(self.equipment_entries)):
+            return
+        entry = self.equipment_entries[index]
+        for key in EQUIPMENT_FIELD_KEYS:
+            entry[key] = self.current_data.get(key, "")
+
+    def _on_equipment_changed(self, index: int) -> None:
+        if index < 0 or index >= len(self.equipment_entries):
+            return
+        if self.current_equipment_index == index:
+            return
+        self._sync_form_to_equipment(self.current_equipment_index)
+        self._load_equipment_into_form(index)
+        self._refresh_equipment_combo()
+
+    def add_equipment_entry(self) -> None:
+        self._sync_form_to_equipment(self.current_equipment_index)
+        self.equipment_entries.append(self._blank_equipment_entry())
+        self._load_equipment_into_form(len(self.equipment_entries) - 1)
+        self._refresh_equipment_combo()
+        self._update_equipment_count_label()
+        self.log(
+            f"Se agregó el equipo {self.current_equipment_index + 1}."
+        )
+
+    def remove_equipment_entry(self) -> None:
+        if len(self.equipment_entries) <= 1:
+            return
+        current = self.current_equipment_index or 0
+        self._sync_form_to_equipment(current)
+        self.equipment_entries.pop(current)
+        next_index = current
+        if next_index >= len(self.equipment_entries):
+            next_index = len(self.equipment_entries) - 1
+        self._load_equipment_into_form(next_index)
+        self._refresh_equipment_combo()
+        self._update_equipment_count_label()
+        self.log(f"Se eliminó el equipo {current + 1}.")
+
+    def clear_form(self, _checked: bool = False, *, log_message: bool = True) -> None:
         self.source_path = None
         self.source_label.setText("Ingreso manual de datos")
         for key in self.current_data:
@@ -429,8 +575,10 @@ class LicenseGeneratorWindow(QMainWindow):
                 widget.setCurrentIndex(0)
                 widget.blockSignals(False)
         self.chk_resolution_paragraph.setChecked(False)
+        self._initialize_equipment_state()
         self._ensure_today_field(force=True)
-        self.log("Formulario limpio. Puedes ingresar valores manualmente.")
+        if log_message:
+            self.log("Formulario limpio. Puedes ingresar valores manualmente.")
 
     def _fill_resolution_components(self, date_text: str) -> None:
         parts = split_resolution_date(date_text)
@@ -464,16 +612,23 @@ class LicenseGeneratorWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error al leer", str(exc))
             return
+        self.clear_form(log_message=False)
         self.source_path = path
         self.source_label.setText(str(path))
         for key, value in document_data.data.items():
+            if key in EQUIPMENT_FIELD_KEYS:
+                continue
             self._set_field(key, value)
         if document_data.persona:
             self._set_field("TIPO_SOLICITANTE", document_data.persona.value)
         if document_data.categoria:
             self._set_field("CATEGORIA", document_data.categoria.value)
+        self._initialize_equipment_state(document_data.equipment)
         self._ensure_today_field()
         self.log(f"Se cargó el documento {path.name}.")
+        self.log(
+            f"Equipos detectados: {len(self.equipment_entries)}."
+        )
         if document_data.unmatched:
             etiquetas = ", ".join(sorted(document_data.unmatched.keys()))
             self.log(
@@ -512,6 +667,7 @@ class LicenseGeneratorWindow(QMainWindow):
             raise ValueError("Faltan datos obligatorios: " + ", ".join(missing))
 
         self._ensure_today_field(force=True)
+        self._sync_form_to_equipment(self.current_equipment_index)
 
         persona = PersonaTipo.from_text(self.current_data.get("TIPO_SOLICITANTE", ""))
         categoria = CategoriaTipo.from_text(self.current_data.get("CATEGORIA", ""))
@@ -525,6 +681,12 @@ class LicenseGeneratorWindow(QMainWindow):
             raise ValueError("Selecciona si es CATEGORIA 1 o CATEGORIA 2.")
 
         self.current_data["CATEGORIA"] = categoria.value
+
+        generation_data = dict(self.current_data)
+        if self.equipment_entries:
+            first_equipment = self.equipment_entries[0]
+            for key in EQUIPMENT_FIELD_KEYS:
+                generation_data[key] = first_equipment.get(key, "")
 
         template_path_str = self.config.templates.resolve_path(persona, categoria)
         if not template_path_str:
@@ -568,7 +730,8 @@ class LicenseGeneratorWindow(QMainWindow):
         generate_from_template(
             template_path,
             output_path,
-            self.current_data,
+            generation_data,
+            equipment_entries=self.equipment_entries,
             include_resolution_paragraph=include_resolution_flag and has_resolution_data,
         )
         self.log(f"Se generó la licencia en {output_path}.")

@@ -17,6 +17,8 @@ from .constants import (
     SECTION_LABEL_TO_FIELD,
     CategoriaTipo,
     PersonaTipo,
+    EQUIPMENT_FIELD_KEYS,
+    TUBE_FIELD_KEYS,
 )
 from .text_utils import (
     apply_bold_text,
@@ -35,6 +37,7 @@ class DocumentData:
     unmatched: Dict[str, str]
     persona: PersonaTipo | None
     categoria: CategoriaTipo | None
+    equipment: List[Dict[str, str]]
 
 
 @dataclass
@@ -95,6 +98,14 @@ def extract_from_docx(path: Path) -> DocumentData:
     data: Dict[str, str] = {}
     raw_labels: Dict[str, str] = {}
     unmatched: Dict[str, str] = {}
+    equipment_entries: List[Dict[str, str]] = []
+    current_equipment: Dict[str, str] | None = None
+
+    def finalize_equipment() -> None:
+        nonlocal current_equipment
+        if current_equipment and any(current_equipment.values()):
+            equipment_entries.append(current_equipment)
+        current_equipment = None
 
     for table in document.tables:
         current_section: str | None = None
@@ -107,10 +118,36 @@ def extract_from_docx(path: Path) -> DocumentData:
                 label_norm = normalize_label(entry.label)
                 raw_labels[label_norm] = entry.value
                 key = _resolve_field_key(label_norm, current_section)
-                if key:
-                    data[key] = normalize_value(entry.value)
-                else:
+                if not key:
                     unmatched[entry.label] = entry.value
+                    continue
+
+                value = normalize_value(entry.value)
+                if key in EQUIPMENT_FIELD_KEYS:
+                    if (
+                        current_equipment
+                        and any(current_equipment.values())
+                        and key in {"TIPO_DE_EQUIPO", "PRACTICA", "MARCA"}
+                    ):
+                        finalize_equipment()
+                    if current_equipment is None:
+                        current_equipment = {}
+                    current_equipment[key] = value
+                    data.setdefault(key, value)
+                else:
+                    data[key] = value
+        finalize_equipment()
+
+    cleaned_equipment: List[Dict[str, str]] = []
+    for entry in equipment_entries:
+        normalized_entry = {key: entry.get(key, "") for key in EQUIPMENT_FIELD_KEYS}
+        if any(normalized_entry.values()):
+            cleaned_equipment.append(normalized_entry)
+
+    if not cleaned_equipment:
+        fallback = {key: data.get(key, "") for key in EQUIPMENT_FIELD_KEYS}
+        if any(fallback.values()):
+            cleaned_equipment.append(fallback)
 
     persona = PersonaTipo.from_text(data.get("TIPO_SOLICITANTE", ""))
     categoria = CategoriaTipo.from_text(data.get("CATEGORIA", ""))
@@ -123,6 +160,7 @@ def extract_from_docx(path: Path) -> DocumentData:
         unmatched=unmatched,
         persona=persona,
         categoria=categoria,
+        equipment=cleaned_equipment,
     )
 
 
@@ -355,6 +393,7 @@ def generate_from_template(
     output_path: Path,
     data: Dict[str, str],
     *,
+    equipment_entries: Optional[List[Dict[str, str]]] = None,
     include_resolution_paragraph: bool = True,
 ) -> Path:
     """Crea un documento a partir de la plantilla y lo guarda."""
@@ -362,6 +401,15 @@ def generate_from_template(
     document = Document(str(template_path))
 
     working_data = dict(data)
+    working_data.setdefault("DATOS_TUBO", "")
+    working_data.setdefault("LISTA_EQUIPOS", "")
+
+    normalized_equipment, base_equipment = _prepare_equipment_entries(
+        working_data, equipment_entries
+    )
+    if base_equipment:
+        working_data["DATOS_TUBO"] = _compose_tube_summary(base_equipment)
+
     resolution_content: PlaceholderContent | None = None
     if include_resolution_paragraph:
         resolution_content = _build_resolution_paragraph(working_data)
@@ -375,10 +423,16 @@ def generate_from_template(
     else:
         working_data.setdefault("PARRAFO_RESOLUCION", "")
 
+    equipment_blocks = _build_equipment_blocks(normalized_equipment, working_data)
+    if equipment_blocks:
+        _inject_equipment_list(document, equipment_blocks)
+
     expanded = _expand_placeholder_aliases(working_data)
     placeholder_contents = _build_placeholder_contents(expanded)
     if resolution_content is not None:
         placeholder_contents["PARRAFO_RESOLUCION"] = resolution_content
+    if equipment_blocks:
+        placeholder_contents.pop("LISTA_EQUIPOS", None)
     replace_placeholders(document, placeholder_contents)
     document.save(str(output_path))
     return output_path
@@ -447,8 +501,175 @@ def _build_placeholder_contents(data: Dict[str, str]) -> Dict[str, PlaceholderCo
 
     contents: Dict[str, PlaceholderContent] = {}
     for key, value in data.items():
-        contents[key] = PlaceholderContent.from_text(value)
+        if key == "FECHA_HOY":
+            contents[key] = PlaceholderContent.from_text(value, bold=False)
+        else:
+            contents[key] = PlaceholderContent.from_text(value)
     return contents
+
+
+def _prepare_equipment_entries(
+    data: Dict[str, str],
+    equipment_entries: Optional[List[Dict[str, str]]],
+) -> tuple[List[Dict[str, str]], Dict[str, str] | None]:
+    """Normaliza la lista de equipos y obtiene el primero como referencia."""
+
+    normalized: List[Dict[str, str]] = []
+    if equipment_entries:
+        for entry in equipment_entries:
+            normalized.append(
+                {key: normalize_value(entry.get(key, "")) for key in EQUIPMENT_FIELD_KEYS}
+            )
+
+    fallback = {key: normalize_value(data.get(key, "")) for key in EQUIPMENT_FIELD_KEYS}
+    base = None
+
+    if normalized:
+        base = normalized[0]
+    elif any(fallback.values()):
+        base = fallback
+    else:
+        base = None
+
+    if not normalized and base:
+        normalized.append(base)
+
+    return normalized, base
+
+
+def _compose_tube_summary(entry: Dict[str, str]) -> str:
+    """Construye el texto para el marcador DATOS_TUBO."""
+
+    values = [entry.get(key, "") for key in TUBE_FIELD_KEYS]
+    if values and all(not value or value == "NO REGISTRA" for value in values):
+        return ""
+
+    parts = []
+    if entry.get("MARCA_TUBO"):
+        parts.append(f"MARCA: {entry['MARCA_TUBO']}")
+    if entry.get("MODELO_TUBO"):
+        parts.append(f"MODELO: {entry['MODELO_TUBO']}")
+    if entry.get("SERIE_TUBO"):
+        parts.append(f"NUMERO DE SERIE: {entry['SERIE_TUBO']}")
+    return " ".join(parts)
+
+
+def _build_equipment_blocks(
+    equipment_entries: List[Dict[str, str]],
+    data: Dict[str, str],
+) -> List[List[str]]:
+    """Genera los párrafos que describen cada equipo."""
+
+    blocks: List[List[str]] = []
+    for index, entry in enumerate(equipment_entries, start=1):
+        lines = _build_equipment_lines(entry, index, data)
+        if lines:
+            blocks.append(lines)
+    return blocks
+
+
+def _build_equipment_lines(
+    entry: Dict[str, str],
+    index: int,
+    data: Dict[str, str],
+) -> List[str]:
+    """Crea las líneas descriptivas para un equipo individual."""
+
+    category = data.get("CATEGORIA", "")
+    header_parts = [f"{index}. EQUIPO DE RAYOS X PARA PRACTICA MEDICA"]
+    if category:
+        header_parts.append(category)
+    if entry.get("PRACTICA"):
+        header_parts.append(entry["PRACTICA"])
+    if entry.get("TIPO_DE_EQUIPO"):
+        header_parts.append(entry["TIPO_DE_EQUIPO"])
+    header = " ".join(part for part in header_parts if part).strip()
+
+    details_segments = [
+        _format_segment("MARCA", entry.get("MARCA", "")),
+        _format_segment("MODELO", entry.get("MODELO", "")),
+        _format_segment("NUMERO DE SERIE", entry.get("SERIE", "")),
+        _format_segment("FECHA FABRICACION", entry.get("FECHA_FABRICACION", ""), "."),
+    ]
+    details = " ".join(segment for segment in details_segments if segment).strip()
+    if details and not details.endswith("."):
+        details = f"{details}."
+
+    tube_segments: List[str] = []
+    tube_summary = _compose_tube_summary(entry)
+    if tube_summary:
+        tube_segments.append(tube_summary)
+    if entry.get("KV"):
+        tube_segments.append(f"POTENCIA OPERACION: {entry['KV']} KV")
+    if entry.get("MA"):
+        tube_segments.append(f"CORRIENTE OPERACION: {entry['MA']} MA")
+    if entry.get("FECHA_FABRICACION_TUBO"):
+        tube_segments.append(f"FECHA FABRICACION: {entry['FECHA_FABRICACION_TUBO']}")
+    if entry.get("W"):
+        tube_segments.append(f"CARGA TRABAJO: W(MA.MIN/SEM){entry['W']}")
+    tube_line = ""
+    if tube_segments:
+        tube_line = "TUBO DE RAYOS X " + " ".join(tube_segments)
+        if not tube_line.endswith("."):
+            tube_line += "."
+
+    location = ""
+    if entry.get("UBICACION_EQUIPO"):
+        location = (
+            "UBICACION EQUIPO RAYOS X DENTRO DE LA INSTALACION: "
+            f"{entry['UBICACION_EQUIPO']}"
+        )
+
+    empresa_qc = entry.get("EMPRESA_QC", "")
+    fecha_qc = entry.get("FECHA_QC", "")
+    if empresa_qc and fecha_qc:
+        qc_line = f"CONTROL DE CALIDAD REALIZADO POR: {empresa_qc} EL {fecha_qc}"
+    elif empresa_qc:
+        qc_line = f"CONTROL DE CALIDAD REALIZADO POR: {empresa_qc}"
+    elif fecha_qc:
+        qc_line = f"CONTROL DE CALIDAD REALIZADO POR: EL {fecha_qc}"
+    else:
+        qc_line = ""
+
+    lines = [normalize_value(text) for text in (header, details, tube_line, location, qc_line) if text]
+    return lines
+
+
+def _format_segment(label: str, value: str, suffix: str = "") -> str:
+    if not value:
+        return ""
+    segment = f"{label}: {value}"
+    if suffix and not segment.endswith(suffix):
+        segment += suffix
+    return segment
+
+
+def _inject_equipment_list(
+    document: DocumentType, equipment_blocks: List[List[str]]
+) -> None:
+    """Inserta los párrafos de equipos en lugar del marcador LISTA_EQUIPOS."""
+
+    if not equipment_blocks:
+        return
+
+    placeholders: List[Paragraph] = []
+    for paragraph in iter_paragraphs(document):
+        if not paragraph.text:
+            continue
+        matches = _PLACEHOLDER_PATTERN.findall(paragraph.text)
+        if any(normalize_placeholder_key(match) == "LISTA_EQUIPOS" for match in matches):
+            placeholders.append(paragraph)
+
+    if not placeholders:
+        return
+
+    for paragraph in placeholders:
+        for block in equipment_blocks:
+            for line in block:
+                new_paragraph = paragraph.insert_paragraph_before("")
+                run = new_paragraph.add_run(normalize_value(line))
+                run.bold = True
+        _remove_paragraph(paragraph)
 
 
 def build_output_name(source_file: Path, radicado: str) -> str:
