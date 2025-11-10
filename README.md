@@ -162,13 +162,14 @@ python gui_app.py
    * Si no tienes documento, elige **Ingresar datos manualmente** y llena cada campo directamente en la interfaz.
 3. **Revisa y corrige la información.**
    * Todos los campos editables aparecen en el formulario central; cualquier edición se normaliza a mayúsculas/negrilla al guardar.
-   * El bloque *Equipos a licenciar* muestra cuántos equipos se detectaron y te permite alternar el equipo activo, agregar registros adicionales o eliminar los que no apliquen antes de generar la licencia.
+   * El bloque *Equipos a licenciar* muestra cuántos equipos se detectaron y te permite alternar el equipo activo, agregar registros adicionales o eliminar los que no apliquen antes de generar la licencia. Cada equipo incluye campos específicos para su categoría y radicado, de modo que puedas ajustarlos sin afectar al resto.
    * Marca si quieres **Actualizar documento origen** (reescribe el `.docx` original con los datos corregidos).
 4. **Genera la licencia.**
    * Presiona **Generar licencia**. El archivo se crea junto al documento fuente (o en la carpeta elegida manualmente) con el patrón `RADICADO_SOLICITANTE_LICENCIA.docx`.
    * Activa la casilla **Incluir párrafo que deja sin efecto una resolución previa** si tu plantilla contiene ese texto y cuentas con los datos de resolución (`{{RESOLUCION}}`, `{{DIA}}`/`{{DIA_EMISION}}`, `{{MES}}`/`{{MES_EMISION}}`, `{{AÑO}}`/`{{AÑO_EMISION}}`). Si falta alguno, la aplicación omitirá automáticamente el párrafo aunque la casilla esté marcada.
    * En la plantilla, ubica el lugar exacto donde debe ir el texto y escribe únicamente el marcador `{{PARRAFO_RESOLUCION}}` en un párrafo independiente. Cuando la casilla esté activa, el marcador se reemplazará por “Este acto administrativo deja sin efecto la Resolución No {{RESOLUCION}}…” con los datos correspondientes; si la casilla está desactivada o los datos son incompletos, el párrafo se elimina por completo. El reemplazo conserva el formato en mayúsculas/minúsculas habitual y solo resalta en negrilla la sección “Resolución No {{RESOLUCION}} del {{DIA}} de {{MES}} de {{AÑO}}”.
    * Si manejas más de un equipo, reserva un párrafo que contenga únicamente `{{LISTA_EQUIPOS}}`. La aplicación insertará allí un bloque numerado con los equipos detectados, replicando el formato estándar del acta. Las plantillas que aún usen los marcadores individuales seguirán tomando los datos del primer equipo.
+   * Cuando distintos equipos pertenecen a categorías o radicados diferentes, revisa los campos **Categoría del equipo** y **Radicado del equipo** para cada registro. Al generar la licencia se crearán archivos independientes por equipo, empleando la plantilla que corresponde a su categoría y nombrando cada archivo con el radicado específico (`RADICADO_EQUIPO_…`). Si dejas el radicado del equipo vacío se reutiliza el radicado principal del formulario.
    * Dentro de la línea “Tubo de rayos X …”, sustituye `Marca: {{MARCA_TUBO}} Modelo: {{MODELO_TUBO}} Número de serie: {{SERIE_TUBO}}` por el marcador `{{DATOS_TUBO}}`. Si las celdas del checklist contienen “NO REGISTRA” (o están vacías) el texto completo del tubo se omite sin dejar espacios dobles.
    * Si tu plantilla incluye la fecha de expedición del documento (`{{FECHA_HOY}}`), la interfaz la rellena automáticamente con la fecha del día en que generas la licencia (formato `dd-mm-aaaa`) y la aplica sin negrilla para respetar el estilo solicitado.
    * Al finalizar, la bitácora inferior muestra el resultado o posibles errores.
@@ -210,6 +211,8 @@ Para que el lector de tablas reconozca cada dato automáticamente, asegúrate de
 | `{{EMPRESA_QC}}` | `EMPRESA CONTROL CALIDAD` / `EMPRESA QUE REALIZÓ EL CONTROL DE CALIDAD` *(o simplemente `EMPRESA` dentro de la sección «CONTROL DE CALIDAD»)* |
 | `{{FECHA_QC}}` | `FECHA CONTROL CALIDAD` / `FECHA DEL CONTROL DE CALIDAD` *(o `FECHA` dentro de la sección «CONTROL DE CALIDAD»)* |
 | `{{SERIE}}` | `SERIE` / `NÚMERO DE SERIE` |
+| `{{CATEGORIA_EQUIPO}}` | `CATEGORÍA EQUIPO` / `CATEGORIA EQUIPO` |
+| `{{RADICADO_EQUIPO}}` | `RADICADO EQUIPO` / `RADICADO DEL EQUIPO` |
 | `{{CATEGORIA}}` | `CATEGORÍA` / `CATEGORÍA LICENCIA` |
 | `{{RESOLUCION}}` | `RESOLUCIÓN` / `NÚMERO DE RESOLUCIÓN` |
 | `{{FECHA_RESOLUCION}}` | `FECHA RESOLUCIÓN` / `FECHA DE LA RESOLUCIÓN` *(formato dd/mm/aaaa)* |

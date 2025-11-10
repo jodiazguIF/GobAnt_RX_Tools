@@ -151,6 +151,12 @@ def extract_from_docx(path: Path) -> DocumentData:
     categoria = CategoriaTipo.from_text(data.get("CATEGORIA", ""))
     if categoria is None:
         categoria = CategoriaTipo.from_text(data.get("TIPO_DE_EQUIPO", ""))
+    if categoria is None:
+        for entry in cleaned_equipment:
+            categoria = CategoriaTipo.from_text(entry.get("CATEGORIA_EQUIPO", ""))
+            if categoria:
+                data.setdefault("CATEGORIA", categoria.value)
+                break
 
     return DocumentData(
         data=data,
@@ -573,7 +579,7 @@ def _build_equipment_lines(
 ) -> List[str]:
     """Crea las líneas descriptivas para un equipo individual."""
 
-    category = data.get("CATEGORIA", "")
+    category = entry.get("CATEGORIA_EQUIPO") or data.get("CATEGORIA", "")
     header_parts = [f"{index}. EQUIPO DE RAYOS X PARA PRACTICA MEDICA"]
     if category:
         header_parts.append(category)
@@ -670,7 +676,9 @@ def _inject_equipment_list(
         _remove_paragraph(paragraph)
 
 
-def build_output_name(source_file: Path, radicado: str) -> str:
+def build_output_name(
+    source_file: Path, radicado: str, *, suffix: str | None = None
+) -> str:
     """Genera el nombre final del archivo de licencia."""
 
     base = source_file.stem
@@ -680,7 +688,14 @@ def build_output_name(source_file: Path, radicado: str) -> str:
         new_name = "_".join(parts)
     else:
         new_name = f"{base}_LICENCIA"
-    return f"{normalize_value(radicado)}_{new_name.split('_', 1)[-1]}"
+
+    cleaned_suffix = ""
+    if suffix:
+        suffix_key = normalize_placeholder_key(suffix)
+        if suffix_key:
+            cleaned_suffix = f"_{suffix_key}"
+
+    return f"{normalize_value(radicado)}_{new_name.split('_', 1)[-1]}{cleaned_suffix}"
 
 
 def _parse_row_entries(row: _Row) -> List[RowEntry]:

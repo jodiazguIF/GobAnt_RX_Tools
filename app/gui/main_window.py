@@ -1,9 +1,10 @@
 """Ventana principal de la aplicación gráfica."""
 from __future__ import annotations
 
+from collections import Counter
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from PySide6.QtCore import QThreadPool, Qt
 from PySide6.QtWidgets import (
@@ -670,11 +671,35 @@ class LicenseGeneratorWindow(QMainWindow):
         self._sync_form_to_equipment(self.current_equipment_index)
 
         persona = PersonaTipo.from_text(self.current_data.get("TIPO_SOLICITANTE", ""))
-        categoria = CategoriaTipo.from_text(self.current_data.get("CATEGORIA", ""))
-        if not categoria:
-            categoria = CategoriaTipo.from_text(self.current_data.get("TIPO_DE_EQUIPO", ""))
-        if not categoria:
-            categoria = CategoriaTipo.from_text(self.current_data.get("PRACTICA", ""))
+
+        def resolve_category(*texts: str) -> CategoriaTipo | None:
+            for text in texts:
+                if not text:
+                    continue
+                category = CategoriaTipo.from_text(text)
+                if category:
+                    return category
+            return None
+
+        normalized_equipment = [
+            self._normalize_equipment_entry(entry)
+            for entry in self.equipment_entries
+        ]
+        if normalized_equipment:
+            self.equipment_entries = normalized_equipment
+
+        categoria = resolve_category(
+            self.current_data.get("CATEGORIA", ""),
+            self.current_data.get("TIPO_DE_EQUIPO", ""),
+            self.current_data.get("PRACTICA", ""),
+        )
+        if not categoria and normalized_equipment:
+            first_entry = normalized_equipment[0]
+            categoria = resolve_category(
+                first_entry.get("CATEGORIA_EQUIPO", ""),
+                first_entry.get("TIPO_DE_EQUIPO", ""),
+                first_entry.get("PRACTICA", ""),
+            )
         if not persona:
             raise ValueError("Define si es PERSONA NATURAL o PERSONA JURIDICA.")
         if not categoria:
@@ -682,20 +707,7 @@ class LicenseGeneratorWindow(QMainWindow):
 
         self.current_data["CATEGORIA"] = categoria.value
 
-        generation_data = dict(self.current_data)
-        if self.equipment_entries:
-            first_equipment = self.equipment_entries[0]
-            for key in EQUIPMENT_FIELD_KEYS:
-                generation_data[key] = first_equipment.get(key, "")
-
-        template_path_str = self.config.templates.resolve_path(persona, categoria)
-        if not template_path_str:
-            raise ValueError("Configura la plantilla correspondiente en la sección de plantillas.")
-        template_path = Path(template_path_str)
-        if not template_path.exists():
-            raise FileNotFoundError(f"No se encontró la plantilla {template_path}")
-
-        radicado = self.current_data["RADICADO"]
+        radicado = self.current_data.get("RADICADO", "")
         if not radicado:
             raise ValueError("El campo Radicado es obligatorio para nombrar el archivo.")
 
@@ -716,9 +728,6 @@ class LicenseGeneratorWindow(QMainWindow):
             solicitante = self.current_data.get("NOMBRE_SOLICITANTE", "SOLICITANTE") or "SOLICITANTE"
             source_stub = output_dir / f"{radicado}_{solicitante.replace(' ', '_')}_CHECKLIST.docx"
 
-        output_name = build_output_name(source_stub, radicado)
-        output_path = output_dir / f"{output_name}.docx"
-
         include_resolution_flag = self.chk_resolution_paragraph.isChecked()
         resolution_fields = ["RESOLUCION", "DIA_EMISION", "MES_EMISION", "ANO_EMISION"]
         has_resolution_data = all(self.current_data.get(field) for field in resolution_fields)
@@ -727,14 +736,111 @@ class LicenseGeneratorWindow(QMainWindow):
                 "Faltan datos de resolución, se omitirá el párrafo que deja sin efecto la resolución previa."
             )
 
-        generate_from_template(
-            template_path,
-            output_path,
-            generation_data,
-            equipment_entries=self.equipment_entries,
-            include_resolution_paragraph=include_resolution_flag and has_resolution_data,
+        def resolve_template_path(category: CategoriaTipo) -> Path:
+            template_path_str = self.config.templates.resolve_path(persona, category)
+            if not template_path_str:
+                raise ValueError(
+                    f"Configura la plantilla para {persona.value} / {category.value} en la sección de plantillas."
+                )
+            template_path = Path(template_path_str)
+            if not template_path.exists():
+                raise FileNotFoundError(f"No se encontró la plantilla {template_path}")
+            return template_path
+
+        equipment_categories = [
+            resolve_category(
+                entry.get("CATEGORIA_EQUIPO", ""),
+                entry.get("TIPO_DE_EQUIPO", ""),
+                entry.get("PRACTICA", ""),
+                categoria.value if categoria else "",
+            )
+            for entry in normalized_equipment
+        ]
+        equipment_radicados = []
+        for entry in normalized_equipment:
+            equipment_rad = entry.get("RADICADO_EQUIPO") or radicado
+            if equipment_rad:
+                entry.setdefault("RADICADO_EQUIPO", equipment_rad)
+            equipment_radicados.append(equipment_rad)
+
+        unique_categories = {cat.value for cat in equipment_categories if cat}
+        unique_radicados = {rad for rad in equipment_radicados if rad}
+        should_split = (
+            len(normalized_equipment) > 1
+            and (len(unique_categories) > 1 or len(unique_radicados) > 1)
         )
-        self.log(f"Se generó la licencia en {output_path}.")
+
+        output_paths: List[Path] = []
+
+        if not normalized_equipment:
+            normalized_equipment = [self._blank_equipment_entry()]
+            self.equipment_entries = normalized_equipment
+
+        if should_split:
+            radicado_counter = Counter(rad for rad in equipment_radicados if rad)
+            for index, entry in enumerate(normalized_equipment, start=1):
+                entry_category = equipment_categories[index - 1] or categoria
+                if not entry_category:
+                    raise ValueError(f"No se pudo determinar la categoría del equipo {index}.")
+                entry_radicado = equipment_radicados[index - 1] or radicado
+                if not entry_radicado:
+                    raise ValueError(
+                        "Define el radicado del equipo en el campo 'Radicado del equipo'."
+                    )
+
+                entry_data = dict(self.current_data)
+                entry_data["CATEGORIA"] = entry_category.value
+                entry_data["RADICADO"] = entry_radicado
+                entry_data["RADICADO_EQUIPO"] = entry_radicado
+                if entry.get("CATEGORIA_EQUIPO"):
+                    entry_data["CATEGORIA_EQUIPO"] = entry.get("CATEGORIA_EQUIPO", "")
+                else:
+                    entry_data["CATEGORIA_EQUIPO"] = entry_category.value
+                for key in EQUIPMENT_FIELD_KEYS:
+                    entry_data[key] = entry.get(key, "")
+
+                template_path = resolve_template_path(entry_category)
+                suffix = None
+                if radicado_counter.get(entry_radicado, 0) > 1:
+                    suffix = f"EQ{index}"
+                output_name = build_output_name(source_stub, entry_radicado, suffix=suffix)
+                output_path = output_dir / f"{output_name}.docx"
+
+                generate_from_template(
+                    template_path,
+                    output_path,
+                    entry_data,
+                    equipment_entries=[entry],
+                    include_resolution_paragraph=
+                    include_resolution_flag and has_resolution_data,
+                )
+                output_paths.append(output_path)
+                self.log(f"Se generó la licencia del equipo {index} en {output_path}.")
+        else:
+            template_path = resolve_template_path(categoria)
+            generation_data = dict(self.current_data)
+            generation_data["CATEGORIA"] = categoria.value
+            if normalized_equipment:
+                first_equipment = normalized_equipment[0]
+                for key in EQUIPMENT_FIELD_KEYS:
+                    generation_data[key] = first_equipment.get(key, "")
+
+            output_name = build_output_name(source_stub, radicado)
+            output_path = output_dir / f"{output_name}.docx"
+            generate_from_template(
+                template_path,
+                output_path,
+                generation_data,
+                equipment_entries=normalized_equipment,
+                include_resolution_paragraph=include_resolution_flag and has_resolution_data,
+            )
+            output_paths.append(output_path)
+            self.log(f"Se generó la licencia en {output_path}.")
+
+        if len(output_paths) > 1:
+            self.log(
+                f"Se generaron {len(output_paths)} licencias (una por equipo detectado)."
+            )
 
         if self.chk_update_source.isChecked() and self.source_path:
             update_source_document(self.source_path, self.current_data)
@@ -742,15 +848,20 @@ class LicenseGeneratorWindow(QMainWindow):
 
         if self.chk_upload_drive.isChecked():
             self.log("Subiendo a Drive y ejecutando pipeline…")
-            worker = Worker(self._upload_and_process, output_path)
+            worker = Worker(self._upload_and_process, output_paths)
             worker.signals.finished.connect(lambda _: self.log("Proceso en Drive completado."))
             worker.signals.error.connect(lambda exc: self._show_worker_error("Drive", exc))
             self.thread_pool.start(worker)
 
-    def _upload_and_process(self, path: Path) -> None:
+    def _upload_and_process(self, paths: Sequence[Path] | Path) -> None:
         pipeline = self._ensure_pipeline()
-        drive_file = pipeline.drive.upload_docx(settings.drive_folder_id, path)
-        pipeline.process_one(drive_file["id"], drive_file["name"])
+        if isinstance(paths, Path):
+            path_list = [paths]
+        else:
+            path_list = list(paths)
+        for doc_path in path_list:
+            drive_file = pipeline.drive.upload_docx(settings.drive_folder_id, doc_path)
+            pipeline.process_one(drive_file["id"], drive_file["name"])
 
     def _ensure_pipeline(self) -> IngestPipeline:
         if not self.pipeline:
