@@ -40,7 +40,7 @@ from .doc_processing import (
     generate_from_template,
     update_source_document,
 )
-from .text_utils import normalize_value, split_resolution_date
+from .text_utils import format_today_date, normalize_value, split_resolution_date
 from .workers import Worker
 from .pdf_processing import (
     QualityReportResult,
@@ -75,6 +75,7 @@ class LicenseGeneratorWindow(QMainWindow):
         self.qc_results: List[QualityReportResult] = []
 
         self._init_ui()
+        self._ensure_today_field()
 
     # ------------------------------------------------------------------ UI
     def _init_ui(self) -> None:
@@ -406,6 +407,8 @@ class LicenseGeneratorWindow(QMainWindow):
                 self._fill_resolution_components(normalized)
             else:
                 self._clear_resolution_components()
+        if key == "FECHA_HOY" and not normalized:
+            self._ensure_today_field(force=True)
 
     def clear_form(self) -> None:
         self.source_path = None
@@ -426,6 +429,7 @@ class LicenseGeneratorWindow(QMainWindow):
                 widget.setCurrentIndex(0)
                 widget.blockSignals(False)
         self.chk_resolution_paragraph.setChecked(False)
+        self._ensure_today_field(force=True)
         self.log("Formulario limpio. Puedes ingresar valores manualmente.")
 
     def _fill_resolution_components(self, date_text: str) -> None:
@@ -468,6 +472,7 @@ class LicenseGeneratorWindow(QMainWindow):
             self._set_field("TIPO_SOLICITANTE", document_data.persona.value)
         if document_data.categoria:
             self._set_field("CATEGORIA", document_data.categoria.value)
+        self._ensure_today_field()
         self.log(f"Se cargó el documento {path.name}.")
         if document_data.unmatched:
             etiquetas = ", ".join(sorted(document_data.unmatched.keys()))
@@ -505,6 +510,8 @@ class LicenseGeneratorWindow(QMainWindow):
         missing = [field.label for field in FIELDS if field.required and not self.current_data.get(field.key)]
         if missing:
             raise ValueError("Faltan datos obligatorios: " + ", ".join(missing))
+
+        self._ensure_today_field(force=True)
 
         persona = PersonaTipo.from_text(self.current_data.get("TIPO_SOLICITANTE", ""))
         categoria = CategoriaTipo.from_text(self.current_data.get("CATEGORIA", ""))
@@ -621,3 +628,23 @@ class LicenseGeneratorWindow(QMainWindow):
             return
         widget.appendPlainText(message)
         widget.ensureCursorVisible()
+
+    def _ensure_today_field(self, force: bool = False) -> None:
+        desired_raw = format_today_date()
+        desired = normalize_value(desired_raw)
+        current = self.current_data.get("FECHA_HOY", "")
+        if current and not force:
+            return
+
+        self.current_data["FECHA_HOY"] = desired
+        widget = self.field_inputs.get("FECHA_HOY")
+        if isinstance(widget, QLineEdit):
+            if widget.text() != desired:
+                widget.blockSignals(True)
+                widget.setText(desired)
+                widget.blockSignals(False)
+        elif isinstance(widget, QTextEdit):
+            if widget.toPlainText() != desired:
+                widget.blockSignals(True)
+                widget.setPlainText(desired)
+                widget.blockSignals(False)

@@ -1,6 +1,7 @@
 """Utilidades para normalizar y formatear texto."""
 from __future__ import annotations
 
+from datetime import date
 import re
 import unicodedata
 from typing import Optional, Tuple
@@ -97,3 +98,11 @@ def split_resolution_date(value: str) -> Optional[Tuple[str, str, str]]:
         year = f"20{year}"
 
     return day, month_name, year
+
+
+def format_today_date(reference: Optional[date] = None) -> str:
+    """Devuelve la fecha actual en formato ``D DE MES DE AAAA``."""
+
+    current = reference or date.today()
+    month_name = MONTH_NAMES_ES[current.month]
+    return f"{current.day} DE {month_name} DE {current.year}"
