@@ -38,6 +38,33 @@ class DocumentData:
 
 
 @dataclass
+class PlaceholderFragment:
+    """Fragmento de texto que compone el reemplazo de un marcador."""
+
+    text: str
+    bold: bool = True
+
+
+@dataclass
+class PlaceholderContent:
+    """Contenido a insertar en lugar de un marcador."""
+
+    fragments: List[PlaceholderFragment]
+
+    @classmethod
+    def from_text(
+        cls, text: str, *, bold: bool = True, uppercase: bool = True
+    ) -> "PlaceholderContent":
+        if uppercase:
+            processed = normalize_value(text)
+        else:
+            processed = text.strip()
+        if not processed:
+            return cls([])
+        return cls([PlaceholderFragment(processed, bold=bold)])
+
+
+@dataclass
 class RowEntry:
     """Representa una fila identificada dentro de una tabla."""
 
@@ -164,13 +191,13 @@ def write_inline_cell(cell: _Cell, label: str, value: str, separator: str) -> No
     apply_bold_text(value_run, normalized_value)
 
 
-def replace_placeholders(document: DocumentType, data: Dict[str, str]) -> None:
+def replace_placeholders(
+    document: DocumentType, data: Dict[str, PlaceholderContent]
+) -> None:
     """Reemplaza cada marcador `{{CLAVE}}` por su valor correspondiente."""
 
     placeholders = {
-        normalize_placeholder_key(key): normalize_value(value)
-        for key, value in data.items()
-        if value
+        normalize_placeholder_key(key): value for key, value in data.items()
     }
     if not placeholders:
         return
@@ -181,7 +208,9 @@ def replace_placeholders(document: DocumentType, data: Dict[str, str]) -> None:
 _PLACEHOLDER_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
 
 
-def replace_in_paragraph(paragraph: Paragraph, placeholders: Dict[str, str]) -> None:
+def replace_in_paragraph(
+    paragraph: Paragraph, placeholders: Dict[str, PlaceholderContent]
+) -> None:
     """Reemplaza marcadores dentro de un párrafo conservando formato."""
 
     if not paragraph.runs:
@@ -203,17 +232,17 @@ def replace_in_paragraph(paragraph: Paragraph, placeholders: Dict[str, str]) -> 
         run_spans.append((index, index + length, run))
         index += length
 
-    fragments: List[tuple[str, str, int]] = []
+    fragments: List[tuple[str, object, int]] = []
     cursor = 0
     for match in matches:
         if match.start() > cursor:
             fragments.append(("text", full_text[cursor:match.start()], cursor))
         key = normalize_placeholder_key(match.group(1))
-        replacement = placeholders.get(key)
-        if replacement is None:
+        content = placeholders.get(key)
+        if content is None:
             fragments.append(("text", match.group(0), match.start()))
         else:
-            fragments.append(("bold", replacement, match.start()))
+            fragments.append(("placeholder", content, match.start()))
         cursor = match.end()
     if cursor < len(full_text):
         fragments.append(("text", full_text[cursor:], cursor))
@@ -221,15 +250,13 @@ def replace_in_paragraph(paragraph: Paragraph, placeholders: Dict[str, str]) -> 
     while paragraph.runs:
         paragraph._element.remove(paragraph.runs[0]._r)
 
-    for kind, text, start in fragments:
-        if not text:
-            continue
-        reference = _find_reference_run(start, run_spans)
-        run = paragraph.add_run(text)
-        if reference:
-            _copy_run_format(reference, run)
-        if kind == "bold":
-            apply_bold_text(run, text)
+    for kind, payload, start in fragments:
+        if kind == "text":
+            _write_text_fragment(paragraph, str(payload), start, run_spans)
+        else:
+            _write_placeholder_fragment(
+                paragraph, payload, start, run_spans
+            )
 
 
 def _find_reference_run(start: int, spans: List[tuple[int, int, Run]]) -> Optional[Run]:
@@ -249,6 +276,66 @@ def _copy_run_format(source: Run, target: Run) -> None:
     if source.font is not None:
         target.font.name = source.font.name
         target.font.size = source.font.size
+
+
+def _find_span_covering(
+    position: int, spans: List[tuple[int, int, Run]]
+) -> Optional[tuple[int, int, Run]]:
+    for begin, end, run in spans:
+        if begin <= position < end:
+            return begin, end, run
+    if spans:
+        return spans[-1]
+    return None
+
+
+def _write_text_fragment(
+    paragraph: Paragraph, text: str, start: int, spans: List[tuple[int, int, Run]]
+) -> None:
+    if not text:
+        return
+    cursor = start
+    consumed = 0
+    total = len(text)
+    while consumed < total:
+        span = _find_span_covering(cursor, spans)
+        if span is None:
+            run = paragraph.add_run(text[consumed:])
+            run.bold = False
+            break
+        begin, end, reference = span
+        span_limit = max(cursor, begin)
+        available = end - span_limit
+        if available <= 0:
+            next_index = spans.index(span) + 1
+            if next_index >= len(spans):
+                break
+            cursor = spans[next_index][0]
+            continue
+        take = min(available, total - consumed)
+        chunk = text[consumed : consumed + take]
+        run = paragraph.add_run(chunk)
+        _copy_run_format(reference, run)
+        consumed += take
+        cursor = span_limit + take
+
+
+def _write_placeholder_fragment(
+    paragraph: Paragraph,
+    content: PlaceholderContent,
+    start: int,
+    spans: List[tuple[int, int, Run]],
+) -> None:
+    if not content.fragments:
+        return
+    reference = _find_reference_run(start, spans)
+    for fragment in content.fragments:
+        if not fragment.text:
+            continue
+        run = paragraph.add_run(fragment.text)
+        if reference:
+            _copy_run_format(reference, run)
+        run.bold = fragment.bold
 
 
 _RESOLUTION_PLACEHOLDER_KEYS = {
@@ -275,25 +362,30 @@ def generate_from_template(
     document = Document(str(template_path))
 
     working_data = dict(data)
+    resolution_content: PlaceholderContent | None = None
     if include_resolution_paragraph:
-        paragraph_text = _build_resolution_paragraph(working_data)
-        if paragraph_text:
-            working_data["PARRAFO_RESOLUCION"] = paragraph_text
-        else:
+        resolution_content = _build_resolution_paragraph(working_data)
+        if resolution_content is None:
             include_resolution_paragraph = False
 
     if not include_resolution_paragraph:
         _remove_resolution_paragraph(document)
         working_data["PARRAFO_RESOLUCION"] = ""
+        resolution_content = None
+    else:
+        working_data.setdefault("PARRAFO_RESOLUCION", "")
 
     expanded = _expand_placeholder_aliases(working_data)
-    replace_placeholders(document, expanded)
+    placeholder_contents = _build_placeholder_contents(expanded)
+    if resolution_content is not None:
+        placeholder_contents["PARRAFO_RESOLUCION"] = resolution_content
+    replace_placeholders(document, placeholder_contents)
     document.save(str(output_path))
     return output_path
 
 
-def _build_resolution_paragraph(data: Dict[str, str]) -> str:
-    """Construye el texto del párrafo que deja sin efecto la resolución previa."""
+def _build_resolution_paragraph(data: Dict[str, str]) -> PlaceholderContent | None:
+    """Construye el contenido del párrafo que deja sin efecto la resolución previa."""
 
     required = {
         "RESOLUCION": "",
@@ -303,18 +395,30 @@ def _build_resolution_paragraph(data: Dict[str, str]) -> str:
     }
 
     for key in required:
-        value = normalize_value(data.get(key, ""))
+        value = data.get(key, "")
         if not value:
-            return ""
-        required[key] = value
+            return None
+        required[key] = value.strip()
 
-    paragraph = (
-        "Este acto administrativo deja sin efecto la Resolución No "
-        f"{required['RESOLUCION']} del {required['DIA_EMISION']} de "
-        f"{required['MES_EMISION']} de {required['ANO_EMISION']}, mediante la cual se "
-        "había concedido licencia de práctica médica para este equipo de Rayos X."
+    month_text = required["MES_EMISION"].strip()
+    month_sentence = month_text.lower()
+    highlight = (
+        f"Resolución No {required['RESOLUCION']} del {required['DIA_EMISION']} "
+        f"de {month_sentence} de {required['ANO_EMISION']}"
     )
-    return normalize_value(paragraph)
+    intro = "Este acto administrativo deja sin efecto la "
+    ending = (
+        ", mediante la cual se había concedido licencia de práctica médica para "
+        "este equipo de Rayos X."
+    )
+
+    return PlaceholderContent(
+        [
+            PlaceholderFragment(intro, bold=False),
+            PlaceholderFragment(highlight, bold=True),
+            PlaceholderFragment(ending, bold=False),
+        ]
+    )
 
 
 def _expand_placeholder_aliases(data: Dict[str, str]) -> Dict[str, str]:
@@ -336,6 +440,15 @@ def _expand_placeholder_aliases(data: Dict[str, str]) -> Dict[str, str]:
         expanded.setdefault("ANO", year)
 
     return expanded
+
+
+def _build_placeholder_contents(data: Dict[str, str]) -> Dict[str, PlaceholderContent]:
+    """Convierte los valores en contenido listo para ser reemplazado."""
+
+    contents: Dict[str, PlaceholderContent] = {}
+    for key, value in data.items():
+        contents[key] = PlaceholderContent.from_text(value)
+    return contents
 
 
 def build_output_name(source_file: Path, radicado: str) -> str:
