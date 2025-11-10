@@ -79,7 +79,7 @@ FIELDS: List[FieldDefinition] = [
     FieldDefinition("EMAIL_NOTIFICACION", "Email de notificación"),
     FieldDefinition("TIPO_DE_EQUIPO", "Tipo de equipo", required=True),
     FieldDefinition("CATEGORIA_EQUIPO", "Categoría del equipo"),
-    FieldDefinition("RADICADO_EQUIPO", "Radicado del equipo"),
+    FieldDefinition("RADICADO_EQUIPO", "Radicado del equipo", required=True),
     FieldDefinition("RESOLUCION_EQUIPO", "Resolución del equipo"),
     FieldDefinition("FECHA_RESOLUCION_EQUIPO", "Fecha resolución del equipo"),
     FieldDefinition("PRACTICA", "Práctica"),
@@ -103,7 +103,17 @@ FIELDS: List[FieldDefinition] = [
 ]
 
 
-HIDDEN_KEYS: Set[str] = {"SUBREGION", "PARRAFO_RESOLUCION"}
+HIDDEN_KEYS: Set[str] = {
+    "SUBREGION",
+    "PARRAFO_RESOLUCION",
+    "RADICADO",
+    "FECHA_RADICACION",
+    "RESOLUCION",
+    "FECHA_RESOLUCION",
+    "DIA_EMISION",
+    "MES_EMISION",
+    "ANO_EMISION",
+}
 
 
 EQUIPMENT_FIELD_KEYS: Set[str] = {

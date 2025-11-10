@@ -121,6 +121,8 @@ class LicenseGeneratorWindow(QMainWindow):
         general_layout = QFormLayout(general_box)
         general_layout.setLabelAlignment(Qt.AlignRight)  # type: ignore[name-defined]
         for field in general_fields:
+            if field.key in HIDDEN_KEYS:
+                continue
             input_widget = self._create_input_for_field(field.key, field.multiline)
             self.field_inputs[field.key] = input_widget
             label = QLabel(field.label + (" *" if field.required else ""))
@@ -131,6 +133,8 @@ class LicenseGeneratorWindow(QMainWindow):
         equipment_layout = QFormLayout(equipment_box)
         equipment_layout.setLabelAlignment(Qt.AlignRight)  # type: ignore[name-defined]
         for field in equipment_fields:
+            if field.key in HIDDEN_KEYS:
+                continue
             input_widget = self._create_input_for_field(field.key, field.multiline)
             self.field_inputs[field.key] = input_widget
             label = QLabel(field.label + (" *" if field.required else ""))
@@ -747,7 +751,13 @@ class LicenseGeneratorWindow(QMainWindow):
             traceback.print_exc()
 
     def _generate_license_impl(self) -> None:
-        missing = [field.label for field in FIELDS if field.required and not self.current_data.get(field.key)]
+        missing = [
+            field.label
+            for field in FIELDS
+            if field.required
+            and field.key not in HIDDEN_KEYS
+            and not self.current_data.get(field.key)
+        ]
         if missing:
             raise ValueError("Faltan datos obligatorios: " + ", ".join(missing))
 
