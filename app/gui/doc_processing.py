@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Set
 
 from docx import Document
 from docx.document import Document as DocumentType
@@ -100,12 +100,14 @@ def extract_from_docx(path: Path) -> DocumentData:
     unmatched: Dict[str, str] = {}
     equipment_entries: List[Dict[str, str]] = []
     current_equipment: Dict[str, str] | None = None
+    current_equipment_keys: Set[str] = set()
 
     def finalize_equipment() -> None:
-        nonlocal current_equipment
+        nonlocal current_equipment, current_equipment_keys
         if current_equipment and any(current_equipment.values()):
             equipment_entries.append(current_equipment)
         current_equipment = None
+        current_equipment_keys = set()
 
     for table in document.tables:
         current_section: str | None = None
@@ -136,16 +138,17 @@ def extract_from_docx(path: Path) -> DocumentData:
                 if key in EQUIPMENT_FIELD_KEYS and (
                     in_equipment_section or current_equipment
                 ):
-                    if current_equipment and any(current_equipment.values()):
-                        existing = current_equipment.get(key, "")
-                        if (
-                            (key == "TIPO_DE_EQUIPO")
-                            or (existing and value and existing != value)
-                        ):
-                            finalize_equipment()
+                    if (
+                        current_equipment
+                        and current_equipment_keys
+                        and key in current_equipment_keys
+                    ):
+                        finalize_equipment()
                     if current_equipment is None:
                         current_equipment = {}
+                        current_equipment_keys = set()
                     current_equipment[key] = value
+                    current_equipment_keys.add(key)
                     data.setdefault(key, value)
                 else:
                     data[key] = value
