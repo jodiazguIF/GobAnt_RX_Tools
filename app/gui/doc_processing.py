@@ -102,6 +102,8 @@ def extract_from_docx(path: Path) -> DocumentData:
     equipment_entries: List[Dict[str, str]] = []
     current_equipment: Dict[str, str] | None = None
     current_equipment_keys: Set[str] = set()
+    column_equipments: Dict[int, Dict[str, str]] = {}
+    column_equipment_keys: Dict[int, Set[str]] = {}
 
     def finalize_equipment() -> None:
         nonlocal current_equipment, current_equipment_keys
@@ -110,22 +112,54 @@ def extract_from_docx(path: Path) -> DocumentData:
         current_equipment = None
         current_equipment_keys = set()
 
+    def finalize_column_equipments() -> None:
+        nonlocal column_equipments, column_equipment_keys
+        if not column_equipments:
+            return
+        for idx in sorted(column_equipments):
+            entry = column_equipments[idx]
+            if any(entry.values()):
+                equipment_entries.append(entry)
+        column_equipments = {}
+        column_equipment_keys = {}
+
     for table in document.tables:
         current_section: str | None = None
         for row in table.rows:
             section = _detect_section(row)
             if section:
-                current_section = section
-                if current_section != "EQUIPOS A LICENCIAR":
+                if current_section == "EQUIPOS A LICENCIAR":
                     finalize_equipment()
+                    finalize_column_equipments()
+                current_section = section
                 continue
             if (
                 current_section == "EQUIPOS A LICENCIAR"
                 and _is_equipment_header_row(row)
             ):
                 finalize_equipment()
+                finalize_column_equipments()
                 current_equipment = None
                 continue
+            if current_section == "EQUIPOS A LICENCIAR":
+                headers = _detect_equipment_column_headers(row)
+                if headers:
+                    finalize_equipment()
+                    finalize_column_equipments()
+                    column_equipments = {idx: {} for idx in headers}
+                    column_equipment_keys = {idx: set() for idx in headers}
+                    continue
+                if column_equipments:
+                    _apply_column_equipment_row(
+                        row,
+                        column_equipments,
+                        column_equipment_keys,
+                        data,
+                        raw_labels,
+                        unmatched,
+                        current_section,
+                    )
+                    continue
             for entry in _parse_row_entries(row):
                 label_norm = normalize_label(entry.label)
                 raw_labels[label_norm] = entry.value
@@ -154,6 +188,7 @@ def extract_from_docx(path: Path) -> DocumentData:
                 else:
                     data[key] = value
         finalize_equipment()
+        finalize_column_equipments()
 
     cleaned_equipment: List[Dict[str, str]] = []
     for entry in equipment_entries:
@@ -636,7 +671,7 @@ def _build_equipment_lines(
     if entry.get("FECHA_FABRICACION_TUBO"):
         tube_segments.append(f"FECHA FABRICACION: {entry['FECHA_FABRICACION_TUBO']}")
     if entry.get("W"):
-        tube_segments.append(f"CARGA TRABAJO: W(MA.MIN/SEM){entry['W']}")
+        tube_segments.append(f"CARGA DE TRABAJO: {entry['W']} MA.MIN/SEM")
     tube_line = ""
     if tube_segments:
         tube_line = "TUBO DE RAYOS X " + " ".join(tube_segments)
@@ -985,6 +1020,75 @@ def _is_equipment_header_row(row: _Row) -> bool:
     return False
 
 
+def _detect_equipment_column_headers(row: _Row) -> Dict[int, str]:
+    """Detecta si la fila define columnas individuales para equipos."""
+
+    cells = list(row.cells)
+    if len(cells) <= 1:
+        return {}
+
+    headers: Dict[int, str] = {}
+    for index, cell in enumerate(cells[1:], start=1):
+        text = cell.text.strip()
+        if not text:
+            continue
+        normalized = normalize_label(text)
+        if not normalized:
+            continue
+        if _EQUIPMENT_CELL_RE.match(normalized) or _EQUIPMENT_HEADER_RE.match(normalized):
+            headers[index] = text
+            continue
+        return {}
+
+    return headers
+
+
+def _apply_column_equipment_row(
+    row: _Row,
+    column_equipments: Dict[int, Dict[str, str]],
+    column_equipment_keys: Dict[int, Set[str]],
+    data: Dict[str, str],
+    raw_labels: Dict[str, str],
+    unmatched: Dict[str, str],
+    section: Optional[str],
+) -> None:
+    """Actualiza las entradas de equipos cuando se usan columnas por equipo."""
+
+    cells = list(row.cells)
+    if not cells:
+        return
+
+    label_text = cells[0].text.strip()
+    if not label_text:
+        return
+
+    label_norm = normalize_label(label_text)
+    key = _resolve_field_key(label_norm, section)
+    first_value: Optional[str] = None
+
+    for index in sorted(column_equipments):
+        if index >= len(cells):
+            continue
+        value_text = cells[index].text.strip()
+        if not value_text:
+            continue
+        value = normalize_value(value_text)
+        if key:
+            column_equipments[index][key] = value
+            column_equipment_keys[index].add(key)
+            data.setdefault(key, value)
+            if first_value is None:
+                first_value = value
+        elif first_value is None:
+            first_value = value
+
+    if key:
+        if first_value:
+            raw_labels[label_norm] = first_value
+    elif label_text and first_value:
+        unmatched[label_text] = first_value
+
+
 def _split_inline_cell(text: str) -> Optional[tuple[str, str, str]]:
     """Divide el contenido de una celda etiqueta:valor en línea."""
 
@@ -1001,18 +1105,6 @@ def _split_inline_cell(text: str) -> Optional[tuple[str, str, str]]:
             value = right.strip()
             if label and value and _looks_like_label(label, normalize_label(label)):
                 return label, value, separator
-
-    if "-" in stripped:
-        left, right = stripped.split("-", 1)
-        label = left.strip()
-        value = right.strip()
-        if (
-            label
-            and value
-            and _looks_like_label(label, normalize_label(label))
-            and not value.replace("-", "").isdigit()
-        ):
-            return label, value, "-"
 
     lines = [line.strip() for line in stripped.splitlines() if line.strip()]
     if len(lines) >= 2:
