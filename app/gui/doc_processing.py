@@ -25,6 +25,7 @@ from .text_utils import (
     normalize_label,
     normalize_placeholder_key,
     normalize_value,
+    strip_accents,
 )
 
 
@@ -925,6 +926,9 @@ def _looks_like_label(text: str, normalized: str) -> bool:
 _EQUIPMENT_HEADER_RE = re.compile(
     r"^EQUIPO(?:\s+(?:NO\.?|N[º°])\s*)?(?:\s*\d+)?[\s:.-]*$"
 )
+_EQUIPMENT_HEADER_START_RE = re.compile(
+    r"^EQUIPO(?:\s+(?:NO\.?|N[º°])\s*)?(?:\s*\d+)?(?:\s*[:.-])?(?:\s|$)"
+)
 
 
 def _is_equipment_header_row(row: _Row) -> bool:
@@ -950,13 +954,20 @@ def _is_equipment_header_row(row: _Row) -> bool:
 
     candidate = " ".join(dedup_texts)
     normalized = normalize_label(candidate)
-    if not normalized:
-        return False
-
-    if normalized.startswith("EQUIPO"):
+    if normalized and normalized.startswith("EQUIPO"):
         if "A LICENCIAR" in normalized or "TIPO" in normalized:
             return False
-        return bool(_EQUIPMENT_HEADER_RE.match(normalized))
+        if _EQUIPMENT_HEADER_RE.match(normalized):
+            return True
+
+    for raw_text in dedup_texts:
+        raw_upper = strip_accents(raw_text).upper().replace("\n", " ").strip()
+        if not raw_upper:
+            continue
+        if raw_upper.startswith("EQUIPOS A LICENCIAR"):
+            return False
+        if _EQUIPMENT_HEADER_START_RE.match(raw_upper):
+            return True
 
     return False
 
