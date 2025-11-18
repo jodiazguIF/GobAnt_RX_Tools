@@ -967,6 +967,39 @@ _EQUIPMENT_CELL_RE = re.compile(
 _EQUIPMENT_HEADER_START_RE = re.compile(
     r"^EQUIPO(?:\s+(?:NO\.?|N[º°])\s*)?(?:\s*\d+)?(?:\s*[:.-])?(?:\s|$)"
 )
+_EQUIPMENT_NUMBER_RE = re.compile(
+    r"EQUIPO(?:\s+(?:NO\.?|N[º°])\s*)?(?:\s*(\d+))"
+)
+
+
+def _extract_equipment_number(text: str) -> Optional[int]:
+    """Devuelve el número de equipo dentro de un texto si existe."""
+
+    if not text:
+        return None
+
+    normalized = (
+        strip_accents(text)
+        .upper()
+        .replace("_", " ")
+        .replace("\n", " ")
+        .strip()
+    )
+    if not normalized:
+        return None
+
+    match = _EQUIPMENT_NUMBER_RE.search(normalized)
+    if not match:
+        return None
+
+    number = match.group(1)
+    if not number:
+        return None
+
+    try:
+        return int(number)
+    except ValueError:
+        return None
 
 
 def _is_equipment_header_row(row: _Row) -> bool:
@@ -1007,8 +1040,15 @@ def _is_equipment_header_row(row: _Row) -> bool:
             return True
 
     for raw_text in dedup_texts:
+        number = _extract_equipment_number(raw_text)
+        if number is not None:
+            return True
         raw_upper = (
-            strip_accents(raw_text).upper().replace("_", " ").replace("\n", " ").strip()
+            strip_accents(raw_text)
+            .upper()
+            .replace("_", " ")
+            .replace("\n", " ")
+            .strip()
         )
         if not raw_upper:
             continue
@@ -1036,6 +1076,10 @@ def _detect_equipment_column_headers(row: _Row) -> Dict[int, str]:
         if not normalized:
             continue
         if _EQUIPMENT_CELL_RE.match(normalized) or _EQUIPMENT_HEADER_RE.match(normalized):
+            headers[index] = text
+            continue
+        number = _extract_equipment_number(text)
+        if number is not None:
             headers[index] = text
             continue
         return {}
@@ -1098,13 +1142,12 @@ def _split_inline_cell(text: str) -> Optional[tuple[str, str, str]]:
     if not stripped:
         return None
 
-    for separator in (":", "–", "—", ";"):
-        if separator in stripped:
-            left, right = stripped.split(separator, 1)
-            label = left.strip()
-            value = right.strip()
-            if label and value and _looks_like_label(label, normalize_label(label)):
-                return label, value, separator
+    if ":" in stripped:
+        left, right = stripped.split(":", 1)
+        label = left.strip()
+        value = right.strip()
+        if label and value and _looks_like_label(label, normalize_label(label)):
+            return label, value, ":"
 
     lines = [line.strip() for line in stripped.splitlines() if line.strip()]
     if len(lines) >= 2:

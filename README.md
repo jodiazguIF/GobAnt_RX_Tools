@@ -205,7 +205,9 @@ Para que el lector de tablas reconozca cada dato automáticamente, asegúrate de
 
 *Cuando registres más de un equipo en la misma tabla, inserta una fila separadora con textos como `EQUIPO 1`, `EQUIPO 2`, etc. Esa fila ayuda a la app a cerrar el bloque anterior antes de empezar el siguiente y evita que los datos se mezclen. Si no puedes usar filas separadoras, repite las etiquetas principales del equipo (`RADICADO EQUIPO`, `TIPO DE EQUIPO`, etc.) al comenzar el siguiente bloque; la app detectará el nuevo grupo y lo tratará como un equipo adicional.*
 
-*Si tu checklist organiza los equipos en columnas (encabezados `EQUIPO_1`, `EQUIPO_2`, …), coloca esa fila de encabezados inmediatamente después del título «EQUIPOS A LICENCIAR» y deja la primera columna para las etiquetas (`RADICADO EQUIPO`, `TIPO DE EQUIPO`, etc.). La aplicación asignará cada columna a un equipo distinto y completará todos los campos disponibles.*
+*Si tu checklist organiza los equipos en columnas (encabezados `EQUIPO_1`, `EQUIPO_2`, …), coloca esa fila de encabezados inmediatamente después del título «EQUIPOS A LICENCIAR» y deja la primera columna para las etiquetas (`RADICADO EQUIPO`, `TIPO DE EQUIPO`, etc.). La aplicación asignará cada columna a un equipo distinto y completará todos los campos disponibles; se detectarán tantas columnas como `EQUIPO_n` existan en la fila.*
+
+*Cuando necesites escribir etiqueta y valor en una misma celda, separa ambos con `:`. El lector ya no divide por guiones ni otros signos, así que valores como `CERO 70 S.A.S. - SEDE NIQUÍA` se mantendrán íntegros.*
 
 | Campo en la app/plantilla (`{{CLAVE}}`) | Texto sugerido en el checklist |
 | --- | --- |
