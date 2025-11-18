@@ -132,7 +132,6 @@ def extract_from_docx(path: Path) -> DocumentData:
                     finalize_equipment()
                     finalize_column_equipments()
                 current_section = section
-                continue
             if (
                 current_section == "EQUIPOS A LICENCIAR"
                 and _is_equipment_header_row(row)
@@ -887,11 +886,11 @@ def _detect_section(row: _Row) -> Optional[str]:
     if normalized in SECTION_LABEL_TO_FIELD:
         return normalized
 
-    if len(dedup_texts) != 1:
-        return None
-    normalized = normalize_label(dedup_texts[0])
-    if normalized in SECTION_LABEL_TO_FIELD:
-        return normalized
+    for text in dedup_texts:
+        normalized = normalize_label(text)
+        if normalized in SECTION_LABEL_TO_FIELD:
+            return normalized
+
     return None
 
 
@@ -952,7 +951,7 @@ def _looks_like_label(text: str, normalized: str) -> bool:
         return True
 
     for hint in _LABEL_HINT_KEYWORDS:
-        if hint in normalized:
+        if normalized.startswith(hint):
             return True
 
     return False
@@ -1082,7 +1081,6 @@ def _detect_equipment_column_headers(row: _Row) -> Dict[int, str]:
         if number is not None:
             headers[index] = text
             continue
-        return {}
 
     return headers
 
