@@ -1,7 +1,6 @@
 """Ventana principal de la aplicación gráfica."""
 from __future__ import annotations
 
-from collections import Counter
 import traceback
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -855,19 +854,33 @@ class LicenseGeneratorWindow(QMainWindow):
             )
             for entry in normalized_equipment
         ]
-        equipment_radicados = []
+        equipment_radicados: List[str] = []
         for entry in normalized_equipment:
             equipment_rad = (
                 entry.get("RADICADO_EQUIPO")
                 or entry.get("RADICADO")
                 or radicado
+                or ""
             )
             if equipment_rad:
                 entry.setdefault("RADICADO_EQUIPO", equipment_rad)
             equipment_radicados.append(equipment_rad)
 
+        radicado_groups: Dict[str, List[int]] = {}
+        for idx, equipment_rad in enumerate(equipment_radicados):
+            key = equipment_rad or ""
+            radicado_groups.setdefault(key, []).append(idx)
+
         unique_radicados = {rad for rad in equipment_radicados if rad}
         should_split = len(normalized_equipment) > 1 and len(unique_radicados) > 1
+
+        empty_group = radicado_groups.get("", [])
+        if should_split and empty_group:
+            missing = ", ".join(str(index + 1) for index in empty_group)
+            raise ValueError(
+                "Define el radicado del equipo en cada registro antes de generar licencias separadas. Faltan los equipos: "
+                + missing
+            )
 
         category_set = {cat.value for cat in equipment_categories if cat}
         if (
@@ -886,61 +899,74 @@ class LicenseGeneratorWindow(QMainWindow):
             self.equipment_entries = normalized_equipment
 
         if should_split:
-            radicado_counter = Counter(rad for rad in equipment_radicados if rad)
-            for index, entry in enumerate(normalized_equipment, start=1):
-                entry_category = equipment_categories[index - 1] or categoria
-                if not entry_category:
-                    raise ValueError(f"No se pudo determinar la categoría del equipo {index}.")
-                entry_radicado = equipment_radicados[index - 1] or radicado
-                if not entry_radicado:
+            for rad_value, indexes in radicado_groups.items():
+                if not rad_value:
+                    continue
+                entries = [normalized_equipment[i] for i in indexes]
+                entry_indices = [i + 1 for i in indexes]
+                categories_for_group = [
+                    equipment_categories[i] or categoria
+                    for i in indexes
+                    if equipment_categories[i] or categoria
+                ]
+                group_category = categories_for_group[0] if categories_for_group else categoria
+                if not group_category:
                     raise ValueError(
-                        "Define el radicado del equipo en el campo 'Radicado del equipo'."
+                        f"No se pudo determinar la categoría para el radicado {rad_value}."
+                    )
+                group_category_values = {
+                    cat.value for cat in categories_for_group if cat
+                }
+                if len(group_category_values) > 1:
+                    self.log(
+                        f"Radicado {rad_value}: se detectaron categorías distintas entre los equipos {entry_indices}; se usará {group_category.value}."
                     )
 
                 entry_data = dict(self.current_data)
-                entry_data["CATEGORIA"] = entry_category.value
-                entry_data["RADICADO"] = entry_radicado
-                entry_data["RADICADO_EQUIPO"] = entry_radicado
-                if entry.get("CATEGORIA_EQUIPO"):
-                    entry_data["CATEGORIA_EQUIPO"] = entry.get("CATEGORIA_EQUIPO", "")
-                else:
-                    entry_data["CATEGORIA_EQUIPO"] = entry_category.value
+                entry_data["CATEGORIA"] = group_category.value
+                entry_data["RADICADO"] = rad_value
+                entry_data["RADICADO_EQUIPO"] = rad_value
+
+                reference_entry = entries[0]
                 for key in EQUIPMENT_FIELD_KEYS:
-                    entry_data[key] = entry.get(key, "")
+                    entry_data[key] = reference_entry.get(key, "")
+                if not entry_data.get("CATEGORIA_EQUIPO"):
+                    entry_data["CATEGORIA_EQUIPO"] = group_category.value
+                for entry in entries:
+                    entry.setdefault("RADICADO_EQUIPO", rad_value)
+                    if not entry.get("CATEGORIA_EQUIPO"):
+                        entry["CATEGORIA_EQUIPO"] = group_category.value
+
                 if entry_data.get("RESOLUCION") and not entry_data.get("RESOLUCION_EQUIPO"):
                     entry_data["RESOLUCION_EQUIPO"] = entry_data["RESOLUCION"]
                 if entry_data.get("FECHA_RESOLUCION") and not entry_data.get("FECHA_RESOLUCION_EQUIPO"):
                     entry_data["FECHA_RESOLUCION_EQUIPO"] = entry_data["FECHA_RESOLUCION"]
 
-                template_path = resolve_template_path(entry_category)
-                suffix = None
-                if radicado_counter.get(entry_radicado, 0) > 1:
-                    suffix = f"EQ{index}"
-                output_name = build_output_name(source_stub, entry_radicado, suffix=suffix)
+                template_path = resolve_template_path(group_category)
+                output_name = build_output_name(source_stub, rad_value)
                 output_path = output_dir / f"{output_name}.docx"
 
                 complete_resolution, resolution_payload = self._collect_resolution_fields(
                     self.current_data,
-                    entry,
+                    reference_entry,
                     prefer_entry=True,
                 )
                 entry_data.update(resolution_payload)
                 include_resolution = include_resolution_flag and complete_resolution
                 if include_resolution_flag and not complete_resolution:
                     self.log(
-                        "Equipo"
-                        f" {index}: faltan datos de resolución, se omitirá el párrafo que deja sin efecto la resolución previa."
+                        f"Radicado {rad_value}: faltan datos de resolución, se omitirá el párrafo que deja sin efecto la resolución previa."
                     )
 
                 generate_from_template(
                     template_path,
                     output_path,
                     entry_data,
-                    equipment_entries=[entry],
+                    equipment_entries=entries,
                     include_resolution_paragraph=include_resolution,
                 )
                 output_paths.append(output_path)
-                self.log(f"Se generó la licencia del equipo {index} en {output_path}.")
+                self.log(f"Se generó la licencia para el radicado {rad_value} en {output_path}.")
         else:
             template_path = resolve_template_path(categoria)
             generation_data = dict(self.current_data)
@@ -986,7 +1012,7 @@ class LicenseGeneratorWindow(QMainWindow):
 
         if len(output_paths) > 1:
             self.log(
-                f"Se generaron {len(output_paths)} licencias (una por equipo detectado)."
+                f"Se generaron {len(output_paths)} licencias (agrupadas por radicado)."
             )
 
         if self.chk_update_source.isChecked() and self.source_path:
