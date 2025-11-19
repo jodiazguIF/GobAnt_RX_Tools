@@ -44,7 +44,6 @@ from .doc_processing import (
     build_output_name,
     extract_from_docx,
     generate_from_template,
-    update_source_document,
 )
 from .text_utils import format_today_date, normalize_value, split_resolution_date
 from .workers import Worker
@@ -366,10 +365,6 @@ class LicenseGeneratorWindow(QMainWindow):
     def _build_actions_section(self) -> QGroupBox:
         box = QGroupBox("Generación")
         layout = QHBoxLayout(box)
-
-        self.chk_update_source = QCheckBox("Actualizar documento origen")
-        self.chk_update_source.setChecked(True)
-        layout.addWidget(self.chk_update_source)
 
         self.chk_upload_drive = QCheckBox("Subir licencia a Drive y ejecutar pipeline")
         layout.addWidget(self.chk_upload_drive)
@@ -811,9 +806,11 @@ class LicenseGeneratorWindow(QMainWindow):
 
         self.current_data["CATEGORIA"] = categoria.value
 
-        radicado = primary_radicado or self.current_data.get("RADICADO", "")
+        radicado = normalize_value(primary_radicado or self.current_data.get("RADICADO", ""))
         if not radicado:
             raise ValueError("El campo Radicado es obligatorio para nombrar el archivo.")
+
+        self.current_data["RADICADO"] = radicado
 
         if self.source_path:
             output_dir = self.source_path.parent
@@ -856,15 +853,16 @@ class LicenseGeneratorWindow(QMainWindow):
         ]
         equipment_radicados: List[str] = []
         for entry in normalized_equipment:
-            equipment_rad = (
+            raw_rad = (
                 entry.get("RADICADO_EQUIPO")
                 or entry.get("RADICADO")
                 or radicado
                 or ""
             )
-            if equipment_rad:
-                entry.setdefault("RADICADO_EQUIPO", equipment_rad)
-            equipment_radicados.append(equipment_rad)
+            normalized_rad = normalize_value(raw_rad) if raw_rad else ""
+            if normalized_rad:
+                entry["RADICADO_EQUIPO"] = normalized_rad
+            equipment_radicados.append(normalized_rad)
 
         radicado_groups: Dict[str, List[int]] = {}
         for idx, equipment_rad in enumerate(equipment_radicados):
@@ -1014,10 +1012,6 @@ class LicenseGeneratorWindow(QMainWindow):
             self.log(
                 f"Se generaron {len(output_paths)} licencias (agrupadas por radicado)."
             )
-
-        if self.chk_update_source.isChecked() and self.source_path:
-            update_source_document(self.source_path, self.current_data)
-            self.log("Documento origen actualizado con los nuevos valores.")
 
         if self.chk_upload_drive.isChecked():
             self.log("Subiendo a Drive y ejecutando pipeline…")

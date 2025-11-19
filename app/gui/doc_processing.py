@@ -1,4 +1,4 @@
-"""Funciones para leer, actualizar y generar documentos de licencia."""
+"""Funciones para leer y generar documentos de licencia."""
 from __future__ import annotations
 
 import re
@@ -21,7 +21,6 @@ from .constants import (
     TUBE_FIELD_KEYS,
 )
 from .text_utils import (
-    apply_bold_text,
     normalize_label,
     normalize_placeholder_key,
     normalize_value,
@@ -233,71 +232,6 @@ def extract_from_docx(path: Path) -> DocumentData:
         categoria=categoria,
         equipment=cleaned_equipment,
     )
-
-
-def update_source_document(path: Path, updated: Dict[str, str]) -> None:
-    """Sobrescribe el documento fuente con los valores corregidos."""
-
-    document = Document(str(path))
-    for table in document.tables:
-        current_section: str | None = None
-        for row in table.rows:
-            section = _detect_section(row)
-            if section:
-                current_section = section
-                continue
-            for entry in _parse_row_entries(row):
-                label_norm = normalize_label(entry.label)
-                key = _resolve_field_key(label_norm, current_section)
-                if not key:
-                    continue
-                value = updated.get(key)
-                if value is None:
-                    continue
-                if entry.inline:
-                    write_inline_cell(
-                        entry.value_cell, entry.label, value, entry.separator
-                    )
-                else:
-                    write_cell(entry.value_cell, value)
-    document.save(str(path))
-
-
-def write_cell(cell: _Cell, value: str) -> None:
-    """Escribe el valor en una celda asegurando formato en mayúsculas y negrilla."""
-
-    while cell.paragraphs:
-        cell._element.remove(cell.paragraphs[0]._p)  # type: ignore[attr-defined]
-    paragraph = cell.add_paragraph()
-    run = paragraph.add_run()
-    apply_bold_text(run, normalize_value(value))
-
-
-def write_inline_cell(cell: _Cell, label: str, value: str, separator: str) -> None:
-    """Actualiza celdas que contienen etiqueta y valor en el mismo bloque."""
-
-    while cell.paragraphs:
-        cell._element.remove(cell.paragraphs[0]._p)  # type: ignore[attr-defined]
-
-    normalized_label = normalize_value(label)
-    normalized_value = normalize_value(value)
-
-    if separator == "\n":
-        label_paragraph = cell.add_paragraph()
-        label_run = label_paragraph.add_run(normalized_label)
-        label_run.bold = True
-        value_paragraph = cell.add_paragraph()
-        value_run = value_paragraph.add_run()
-        apply_bold_text(value_run, normalized_value)
-        return
-
-    paragraph = cell.add_paragraph()
-    label_run = paragraph.add_run(normalized_label)
-    label_run.bold = True
-    separator_run = paragraph.add_run(f"{separator} ")
-    separator_run.bold = True
-    value_run = paragraph.add_run()
-    apply_bold_text(value_run, normalized_value)
 
 
 def replace_placeholders(
