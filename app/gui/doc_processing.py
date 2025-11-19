@@ -132,13 +132,12 @@ def extract_from_docx(path: Path) -> DocumentData:
                     finalize_equipment()
                     finalize_column_equipments()
                 current_section = section
-            if (
-                current_section == "EQUIPOS A LICENCIAR"
-                and _is_equipment_header_row(row)
-            ):
+
+            if _is_equipment_header_row(row):
                 finalize_equipment()
                 finalize_column_equipments()
                 current_equipment = None
+                current_section = "EQUIPOS A LICENCIAR"
                 continue
             if current_section == "EQUIPOS A LICENCIAR":
                 headers = _detect_equipment_column_headers(row)
@@ -161,6 +160,14 @@ def extract_from_docx(path: Path) -> DocumentData:
                     continue
             for entry in _parse_row_entries(row):
                 label_norm = normalize_label(entry.label)
+
+                if _is_equipment_marker_label(label_norm):
+                    finalize_equipment()
+                    finalize_column_equipments()
+                    current_equipment = None
+                    current_section = "EQUIPOS A LICENCIAR"
+                    continue
+
                 raw_labels[label_norm] = entry.value
                 key = _resolve_field_key(label_norm, current_section)
                 if not key:
@@ -999,6 +1006,16 @@ def _extract_equipment_number(text: str) -> Optional[int]:
         return int(number)
     except ValueError:
         return None
+
+
+def _is_equipment_marker_label(label_norm: str) -> bool:
+    """Indica si la etiqueta representa un encabezado ``EQUIPO_n``."""
+
+    if not label_norm:
+        return False
+    if not label_norm.startswith("EQUIPO"):
+        return False
+    return _extract_equipment_number(label_norm) is not None
 
 
 def _is_equipment_header_row(row: _Row) -> bool:
