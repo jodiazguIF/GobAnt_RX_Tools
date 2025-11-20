@@ -562,82 +562,110 @@ def _compose_tube_summary(entry: Dict[str, str]) -> str:
 def _build_equipment_blocks(
     equipment_entries: List[Dict[str, str]],
     data: Dict[str, str],
-) -> List[List[str]]:
-    """Genera los párrafos que describen cada equipo."""
+) -> List[PlaceholderContent]:
+    """Genera los párrafos que describen cada equipo con formato controlado."""
 
-    blocks: List[List[str]] = []
+    paragraphs: List[PlaceholderContent] = []
     for index, entry in enumerate(equipment_entries, start=1):
-        lines = _build_equipment_lines(entry, index, data)
-        if lines:
-            blocks.append(lines)
-    return blocks
+        paragraphs.extend(_build_equipment_paragraphs(entry, index, data))
+    return paragraphs
 
 
-def _build_equipment_lines(
+def _build_equipment_paragraphs(
     entry: Dict[str, str],
     index: int,
     data: Dict[str, str],
-) -> List[str]:
-    """Crea las líneas descriptivas para un equipo individual."""
+) -> List[PlaceholderContent]:
+    """Crea los párrafos descriptivos para un equipo individual."""
+
+    paragraphs: List[PlaceholderContent] = []
 
     category = entry.get("CATEGORIA_EQUIPO") or data.get("CATEGORIA", "")
-    header_parts = [f"{index}. EQUIPO DE RAYOS X PARA PRACTICA MEDICA"]
+    practice = entry.get("PRACTICA", "")
+    equipment_type = entry.get("TIPO_DE_EQUIPO", "")
+
+    header_parts = [
+        PlaceholderFragment(
+            f"{index}. Equipo de rayos X para Práctica Médica", bold=True
+        )
+    ]
     if category:
-        header_parts.append(category)
-    if entry.get("PRACTICA"):
-        header_parts.append(entry["PRACTICA"])
-    if entry.get("TIPO_DE_EQUIPO"):
-        header_parts.append(entry["TIPO_DE_EQUIPO"])
-    header = " ".join(part for part in header_parts if part).strip()
+        header_parts.append(
+            PlaceholderFragment(f" Categoría {category}", bold=True)
+        )
+    if practice:
+        header_parts.append(PlaceholderFragment(f" {practice}", bold=True))
+    if equipment_type:
+        header_parts.append(PlaceholderFragment(f" {equipment_type}", bold=True))
+    paragraphs.append(PlaceholderContent(header_parts))
 
     details_segments = [
-        _format_segment("MARCA", entry.get("MARCA", "")),
-        _format_segment("MODELO", entry.get("MODELO", "")),
-        _format_segment("NUMERO DE SERIE", entry.get("SERIE", "")),
-        _format_segment("FECHA FABRICACION", entry.get("FECHA_FABRICACION", ""), "."),
+        _format_segment("Marca", entry.get("MARCA", "")),
+        _format_segment("Modelo", entry.get("MODELO", "")),
+        _format_segment("Número de serie", entry.get("SERIE", "")),
+        _format_segment("Fecha fabricación", entry.get("FECHA_FABRICACION", ""), "."),
     ]
-    details = " ".join(segment for segment in details_segments if segment).strip()
-    if details and not details.endswith("."):
-        details = f"{details}."
+    details_text = " ".join(segment for segment in details_segments if segment).strip()
+    if details_text and not details_text.endswith("."):
+        details_text = f"{details_text}."
+    if details_text:
+        paragraphs.append(
+            PlaceholderContent([PlaceholderFragment(details_text, bold=True)])
+        )
 
     tube_segments: List[str] = []
     tube_summary = _compose_tube_summary(entry)
     if tube_summary:
         tube_segments.append(tube_summary)
     if entry.get("KV"):
-        tube_segments.append(f"POTENCIA OPERACION: {entry['KV']} KV")
+        tube_segments.append(f"Potencia operación: {entry['KV']} kV")
     if entry.get("MA"):
-        tube_segments.append(f"CORRIENTE OPERACION: {entry['MA']} MA")
+        tube_segments.append(f"Corriente operación: {entry['MA']} mA")
     if entry.get("FECHA_FABRICACION_TUBO"):
-        tube_segments.append(f"FECHA FABRICACION: {entry['FECHA_FABRICACION_TUBO']}")
+        tube_segments.append(
+            f"Fecha fabricación: {entry['FECHA_FABRICACION_TUBO']}"
+        )
     if entry.get("W"):
-        tube_segments.append(f"CARGA DE TRABAJO: {entry['W']} MA.MIN/SEM")
+        tube_segments.append(f"Carga de trabajo: W(mA.MIN/SEM){entry['W']}")
     tube_line = ""
     if tube_segments:
-        tube_line = "TUBO DE RAYOS X " + " ".join(tube_segments)
+        tube_line = "Tubo de rayos x " + " ".join(tube_segments)
         if not tube_line.endswith("."):
             tube_line += "."
+    if tube_line:
+        paragraphs.append(
+            PlaceholderContent([PlaceholderFragment(tube_line, bold=True)])
+        )
 
-    location = ""
     if entry.get("UBICACION_EQUIPO"):
-        location = (
-            "UBICACION EQUIPO RAYOS X DENTRO DE LA INSTALACION: "
-            f"{entry['UBICACION_EQUIPO']}"
+        paragraphs.append(
+            PlaceholderContent(
+                [
+                    PlaceholderFragment(
+                        "Ubicación equipo rayos x dentro de la instalación: "
+                        f"{entry['UBICACION_EQUIPO']}",
+                        bold=True,
+                    )
+                ]
+            )
         )
 
     empresa_qc = entry.get("EMPRESA_QC", "")
     fecha_qc = entry.get("FECHA_QC", "")
-    if empresa_qc and fecha_qc:
-        qc_line = f"CONTROL DE CALIDAD REALIZADO POR: {empresa_qc} EL {fecha_qc}"
-    elif empresa_qc:
-        qc_line = f"CONTROL DE CALIDAD REALIZADO POR: {empresa_qc}"
-    elif fecha_qc:
-        qc_line = f"CONTROL DE CALIDAD REALIZADO POR: EL {fecha_qc}"
-    else:
-        qc_line = ""
+    qc_fragments: List[PlaceholderFragment] = []
+    if empresa_qc or fecha_qc:
+        qc_fragments.append(
+            PlaceholderFragment("Control de calidad realizado por: ", bold=False)
+        )
+    if empresa_qc:
+        qc_fragments.append(PlaceholderFragment(empresa_qc, bold=True))
+    if fecha_qc:
+        qc_fragments.append(PlaceholderFragment(" el ", bold=False))
+        qc_fragments.append(PlaceholderFragment(fecha_qc, bold=True))
+    if qc_fragments:
+        paragraphs.append(PlaceholderContent(qc_fragments))
 
-    lines = [normalize_value(text) for text in (header, details, tube_line, location, qc_line) if text]
-    return lines
+    return paragraphs
 
 
 def _format_segment(label: str, value: str, suffix: str = "") -> str:
@@ -650,7 +678,7 @@ def _format_segment(label: str, value: str, suffix: str = "") -> str:
 
 
 def _inject_equipment_list(
-    document: DocumentType, equipment_blocks: List[List[str]]
+    document: DocumentType, equipment_blocks: List[PlaceholderContent]
 ) -> None:
     """Inserta los párrafos de equipos en lugar del marcador LISTA_EQUIPOS."""
 
@@ -670,10 +698,12 @@ def _inject_equipment_list(
 
     for paragraph in placeholders:
         for block in equipment_blocks:
-            for line in block:
-                new_paragraph = paragraph.insert_paragraph_before("")
-                run = new_paragraph.add_run(normalize_value(line))
-                run.bold = True
+            new_paragraph = paragraph.insert_paragraph_before("")
+            for fragment in block.fragments:
+                if not fragment.text:
+                    continue
+                run = new_paragraph.add_run(fragment.text)
+                run.bold = fragment.bold
         _remove_paragraph(paragraph)
 
 
