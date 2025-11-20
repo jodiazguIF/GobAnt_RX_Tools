@@ -697,12 +697,51 @@ def _inject_equipment_list(
         return
 
     for paragraph in placeholders:
+        reference_run = paragraph.runs[0] if paragraph.runs else None
+        reference_style = paragraph.style
+        reference_alignment = paragraph.alignment
+        reference_format = paragraph.paragraph_format
         for block in equipment_blocks:
             new_paragraph = paragraph.insert_paragraph_before("")
+            new_paragraph.style = reference_style
+            new_paragraph.alignment = reference_alignment
+            if reference_format is not None and new_paragraph.paragraph_format:
+                new_paragraph.paragraph_format.left_indent = (
+                    reference_format.left_indent
+                )
+                new_paragraph.paragraph_format.right_indent = (
+                    reference_format.right_indent
+                )
+                new_paragraph.paragraph_format.first_line_indent = (
+                    reference_format.first_line_indent
+                )
+                new_paragraph.paragraph_format.space_before = (
+                    reference_format.space_before
+                )
+                new_paragraph.paragraph_format.space_after = (
+                    reference_format.space_after
+                )
+                new_paragraph.paragraph_format.line_spacing = (
+                    reference_format.line_spacing
+                )
+                new_paragraph.paragraph_format.keep_together = (
+                    reference_format.keep_together
+                )
+                new_paragraph.paragraph_format.keep_with_next = (
+                    reference_format.keep_with_next
+                )
+                new_paragraph.paragraph_format.page_break_before = (
+                    reference_format.page_break_before
+                )
+                new_paragraph.paragraph_format.widow_control = (
+                    reference_format.widow_control
+                )
             for fragment in block.fragments:
                 if not fragment.text:
                     continue
                 run = new_paragraph.add_run(fragment.text)
+                if reference_run:
+                    _copy_run_format(reference_run, run)
                 run.bold = fragment.bold
         _remove_paragraph(paragraph)
 
