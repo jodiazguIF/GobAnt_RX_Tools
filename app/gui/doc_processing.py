@@ -551,11 +551,11 @@ def _compose_tube_summary(entry: Dict[str, str]) -> str:
 
     parts = []
     if entry.get("MARCA_TUBO"):
-        parts.append(f"MARCA: {entry['MARCA_TUBO']}")
+        parts.append(f"Marca: {entry['MARCA_TUBO']}")
     if entry.get("MODELO_TUBO"):
-        parts.append(f"MODELO: {entry['MODELO_TUBO']}")
+        parts.append(f"Modelo: {entry['MODELO_TUBO']}")
     if entry.get("SERIE_TUBO"):
-        parts.append(f"NUMERO DE SERIE: {entry['SERIE_TUBO']}")
+        parts.append(f"Número de serie: {entry['SERIE_TUBO']}")
     return " ".join(parts)
 
 
