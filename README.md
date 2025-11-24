@@ -1,4 +1,4 @@
-# GobAnt_RX_Tools - Web App IA
+# GobAnt_RX_Tools - App IA
 
 Pipeline en Python que:
 
