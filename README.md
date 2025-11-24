@@ -162,9 +162,16 @@ python gui_app.py
    * Si no tienes documento, elige **Ingresar datos manualmente** y llena cada campo directamente en la interfaz.
 3. **Revisa y corrige la información.**
    * Todos los campos editables aparecen en el formulario central; cualquier edición se normaliza a mayúsculas/negrilla al guardar.
-   * Marca si quieres **Actualizar documento origen** (reescribe el `.docx` original con los datos corregidos).
+   * El bloque *Equipos a licenciar* muestra cuántos equipos se detectaron y te permite alternar el equipo activo, agregar registros adicionales o eliminar los que no apliquen antes de generar la licencia. Cada equipo incluye campos específicos para su categoría y radicado; completa ahí el **Radicado del equipo** (obligatorio), porque la aplicación lo usará para nombrar el archivo final y rellenar automáticamente el radicado principal del trámite.
 4. **Genera la licencia.**
    * Presiona **Generar licencia**. El archivo se crea junto al documento fuente (o en la carpeta elegida manualmente) con el patrón `RADICADO_SOLICITANTE_LICENCIA.docx`.
+   * Activa la casilla **Incluir párrafo que deja sin efecto una resolución previa** si tu plantilla contiene ese texto y cuentas con los datos de resolución (`{{RESOLUCION}}`, `{{DIA}}`/`{{DIA_EMISION}}`, `{{MES}}`/`{{MES_EMISION}}`, `{{AÑO}}`/`{{AÑO_EMISION}}`). Si falta alguno, la aplicación omitirá automáticamente el párrafo aunque la casilla esté marcada.
+   * En la plantilla, ubica el lugar exacto donde debe ir el texto y escribe únicamente el marcador `{{PARRAFO_RESOLUCION}}` en un párrafo independiente. Cuando la casilla esté activa, el marcador se reemplazará por “Este acto administrativo deja sin efecto la Resolución No {{RESOLUCION}}…” con los datos correspondientes; si la casilla está desactivada o los datos son incompletos, el párrafo se elimina por completo. El reemplazo conserva el formato en mayúsculas/minúsculas habitual y solo resalta en negrilla la sección “Resolución No {{RESOLUCION}} del {{DIA}} de {{MES}} de {{AÑO}}”.
+   * Si manejas más de un equipo, reserva un párrafo que contenga únicamente `{{LISTA_EQUIPOS}}` en el lugar exacto donde quieras que aparezcan. La aplicación insertará allí un bloque numerado (1., 2., 3., …) con el texto fijo que se ve en el acta: cada párrafo principal va en negrilla con la misma combinación de mayúsculas y minúsculas del ejemplo y los valores en mayúscula; la línea de control de calidad se escribe con el prefijo “Control de calidad realizado por:” sin negrilla, seguido del nombre y la fecha en negrilla. Las plantillas que aún usen los marcadores individuales seguirán tomando los datos del primer equipo.
+   * Cuando distintos equipos comparten el mismo radicado, la licencia los agrupa en un único documento. Si los radicados difieren, revisa los campos **Categoría del equipo** y **Radicado del equipo** en cada registro: la aplicación generará un archivo por radicado, usando la plantilla que corresponda a la categoría detectada en cada grupo y nombrando cada archivo con ese radicado (`RADICADO_EQUIPO_…`).
+   * Si cada equipo cuenta con una resolución previa distinta, utiliza los campos **Resolución del equipo** y **Fecha resolución del equipo** al revisar cada registro. En los archivos generados individualmente, esos valores reemplazan `{{RESOLUCION}}`, `{{FECHA_RESOLUCION}}` y sus componentes (`{{DIA}}`, `{{MES}}`, `{{AÑO}}`) al construir el párrafo opcional. Si la casilla está activa pero falta algún dato para un equipo concreto, la bitácora avisará y el párrafo se omitirá solo en ese documento.
+   * Dentro de la línea “Tubo de rayos X …”, sustituye `Marca: {{MARCA_TUBO}} Modelo: {{MODELO_TUBO}} Número de serie: {{SERIE_TUBO}}` por el marcador `{{DATOS_TUBO}}`. Si las celdas del checklist contienen “NO REGISTRA” (o están vacías) el texto completo del tubo se omite sin dejar espacios dobles.
+   * Si tu plantilla incluye la fecha de expedición del documento (`{{FECHA_HOY}}`), la interfaz la rellena automáticamente con la fecha del día en que generas la licencia (formato `dd-mm-aaaa`) y la aplica sin negrilla para respetar el estilo solicitado.
    * Al finalizar, la bitácora inferior muestra el resultado o posibles errores.
 5. **(Opcional) Sube a Drive y ejecuta el pipeline.**
    * Activa **Subir licencia a Drive y ejecutar pipeline** para reutilizar la configuración de `app/config.py` y disparar la ingesta automática tras la generación.
@@ -172,6 +179,65 @@ python gui_app.py
    * Desde la pestaña *Carga automática (Drive/Sheets)* puedes lanzar los comandos `process_folder`, `process_folder_only_new` o `process_folder_only_pending` sin salir de la GUI.
 
 > Consejo: si tu checklist cambia de estructura, ajusta los campos esperados en `app/gui/constants.py` antes de usar la aplicación para garantizar que el mapeo siga funcionando.
+
+### Reportes de control de calidad (PDF → JSON)
+
+La interfaz incluye una pestaña adicional para consolidar los reportes de control de calidad almacenados como PDF en una carpeta local.
+
+1. Abre la pestaña **Reportes control de calidad** y pulsa **Seleccionar carpeta…** para elegir la ubicación con los PDFs.
+   * Si ves un aviso indicando que falta `pdfplumber`, instala la dependencia opcional ejecutando `pip install pdfplumber` (o vuelve a correr `pip install -r requirements.txt`).
+2. Presiona **Analizar PDFs**. Cada archivo se procesa en segundo plano y se extraen cuatro campos:
+   * **Fecha de la evaluación** (`fecha_evaluacion` en el JSON)
+   * **Tipo de equipo** (`tipo_equipo`)
+   * **Nombre de la institución** (`nombre_de_la_institucion`)
+   * **Identificador**, tomado del prefijo numérico del nombre del archivo (`XX_nombre.pdf → XX`).
+3. Verifica los resultados en la tabla. Cualquier PDF sin texto o con campos faltantes se reporta en la bitácora de la pestaña.
+4. Usa **Exportar JSON** para guardar el resumen en un archivo (`control_calidad.json` por defecto). Se incluye el nombre y ruta original de cada PDF para facilitar trazabilidad.
+
+Para maximizar la detección automática, mantén etiquetas legibles en los PDFs (por ejemplo, «Fecha de la evaluación: …», «Tipo de equipo: …», «Nombre de la institución: …»). Si una etiqueta aparece en una línea y el valor en la siguiente, el lector también la interpretará correctamente.
+
+#### Checklist: etiquetas recomendadas
+
+Para que el lector de tablas reconozca cada dato automáticamente, asegúrate de que las celdas de la tabla contengan una de las siguientes etiquetas (negrilla y con dos puntos opcional). Es válido que la etiqueta esté seguida del valor en la misma celda o que el valor esté en la celda contigua.
+
+*Para los radicados, fechas y resoluciones específicas de cada equipo, coloca las etiquetas dentro de la sección «EQUIPOS A LICENCIAR». El lector acepta variantes con guiones bajos (`RADICADO_E`, `FECHA_RADICACION_E`, `RESOLUCION_E`, etc.) o con la palabra «EQUIPO» en el rótulo.*
+
+*Cuando registres más de un equipo en la misma tabla, inserta una fila separadora con textos como `EQUIPO 1`, `EQUIPO 2`, etc. Esa fila ayuda a la app a cerrar el bloque anterior antes de empezar el siguiente y evita que los datos se mezclen. Si no puedes usar filas separadoras, repite las etiquetas principales del equipo (`RADICADO EQUIPO`, `TIPO DE EQUIPO`, etc.) al comenzar el siguiente bloque; la app detectará el nuevo grupo y lo tratará como un equipo adicional.*
+
+*Si tu checklist organiza los equipos en columnas (encabezados `EQUIPO_1`, `EQUIPO_2`, …), coloca esa fila de encabezados inmediatamente después del título «EQUIPOS A LICENCIAR» y deja la primera columna para las etiquetas (`RADICADO EQUIPO`, `TIPO DE EQUIPO`, etc.). La aplicación asignará cada columna a un equipo distinto y completará todos los campos disponibles; se detectarán tantas columnas como `EQUIPO_n` existan en la fila.*
+
+*Cuando necesites escribir etiqueta y valor en una misma celda, separa ambos con `:`. El lector ya no divide por guiones ni otros signos, así que valores como `CERO 70 S.A.S. - SEDE NIQUÍA` se mantendrán íntegros.*
+
+| Campo en la app/plantilla (`{{CLAVE}}`) | Texto sugerido en el checklist |
+| --- | --- |
+| `{{NOMBRE_SOLICITANTE}}` | `NOMBRE O RAZÓN SOCIAL` / `RAZON SOCIAL` |
+| `{{NIT_CC}}` | `NIT O CC` / `NIT` / `C.C` |
+| `{{REPRESENTANTE_LEGAL}}` | `REPRESENTANTE LEGAL` / `NOMBRE REPRESENTANTE LEGAL` |
+| `{{REPRESENTANTE_CC}}` | `CC REPRESENTANTE LEGAL` / `DOCUMENTO REPRESENTANTE LEGAL` |
+| `{{OPR_NOMBRE}}` | `ENCARGADO/OPR NOMBRE COMPLETO` / `OFICIAL DE PROTECCIÓN RADIOLÓGICA` |
+| `{{OPR_CC}}` | `CC OPR` / `DOCUMENTO OPR` |
+| `{{EMPRESA_QC}}` | `EMPRESA CONTROL CALIDAD` / `EMPRESA QUE REALIZÓ EL CONTROL DE CALIDAD` *(o simplemente `EMPRESA` dentro de la sección «CONTROL DE CALIDAD»)* |
+| `{{FECHA_QC}}` | `FECHA CONTROL CALIDAD` / `FECHA DEL CONTROL DE CALIDAD` *(o `FECHA` dentro de la sección «CONTROL DE CALIDAD»)* |
+| `{{SERIE}}` | `SERIE` / `NÚMERO DE SERIE` |
+| `{{CATEGORIA_EQUIPO}}` | `CATEGORÍA EQUIPO` / `CATEGORIA EQUIPO` / `CATEGORIA_E` *(en la sección «EQUIPOS A LICENCIAR»)* |
+| `{{RADICADO}}` | `RADICADO` *(encabezado general)* |
+| `{{RADICADO_EQUIPO}}` | `RADICADO EQUIPO` / `RADICADO DEL EQUIPO` / `RADICADO_E` *(en «EQUIPOS A LICENCIAR»)* |
+| `{{FECHA_RADICACION}}` | `FECHA RADICACIÓN` / `FECHA RADICACION` / `FECHA_RADICACION_E` *(en «EQUIPOS A LICENCIAR», formato dd/mm/aaaa)* |
+| `{{CATEGORIA}}` | `CATEGORÍA` / `CATEGORÍA LICENCIA` |
+| `{{RESOLUCION}}` | `RESOLUCIÓN` / `NÚMERO DE RESOLUCIÓN` *(si aplica a todos los equipos)* |
+| `{{FECHA_RESOLUCION}}` | `FECHA RESOLUCIÓN` / `FECHA DE LA RESOLUCIÓN` *(formato dd/mm/aaaa y aplica a todos los equipos)* |
+| `{{RESOLUCION_EQUIPO}}` | `RESOLUCIÓN EQUIPO` / `RESOLUCION_E` / `RESOLUCIÓN DEL EQUIPO` *(en «EQUIPOS A LICENCIAR»)* |
+| `{{FECHA_RESOLUCION_EQUIPO}}` | `FECHA RESOLUCIÓN EQUIPO` / `FECHA_RESOLUCION_E` / `FECHA RESOLUCIÓN DEL EQUIPO` *(formato dd/mm/aaaa dentro de «EQUIPOS A LICENCIAR»)* |
+| `{{FECHA_HOY}}` | Campo agregado manualmente en la plantilla para la fecha de expedición del documento. No se extrae del checklist; la app lo completa con la fecha actual en formato `dd-mm-aaaa` (sin aplicar negrilla). |
+| `{{DATOS_TUBO}}` | Reemplaza el segmento “Marca/Modelo/Número de serie” del tubo; se omite automáticamente cuando las celdas del checklist dicen “NO REGISTRA”. |
+| `{{LISTA_EQUIPOS}}` | Inserta la lista numerada de equipos en plantillas con múltiples dispositivos licenciados. Debe ubicarse en un párrafo independiente. |
+| `{{DIA_EMISION}}` o `{{DIA}}` | `DÍA EMISIÓN` / `DÍA` |
+| `{{MES_EMISION}}` o `{{MES}}` | `MES EMISIÓN` / `MES` |
+| `{{AÑO_EMISION}}` o `{{AÑO}}` | `AÑO EMISIÓN` / `AÑO` |
+
+> La aplicación toma la fecha `dd/mm/aaaa` detectada en el checklist y rellena automáticamente `{{DIA}}`, `{{MES}}` (nombre del mes en texto) y `{{AÑO}}`. Si borras la fecha en la interfaz, los tres campos se limpian para evitar información obsoleta.
+
+> Nota: Los valores pueden incluir guiones (`-`) o diagonales sin afectar la detección. Si una etiqueta necesita abreviarse en el checklist (por ejemplo `EMPRESA` o `FECHA`), ubícala debajo del encabezado de tabla “CONTROL DE CALIDAD” para que la app la asocie con `EMPRESA_QC` o `FECHA_QC` respectivamente.
 
 ---
 
