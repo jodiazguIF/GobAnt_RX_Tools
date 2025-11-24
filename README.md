@@ -157,6 +157,7 @@ python gui_app.py
 1. **Configura las plantillas la primera vez.**
    * En la sección *Plantillas de licencia* presiona **Seleccionar…** para cada combinación (Natural/Jurídica × Categoría I/II) y apunta al `.docx` con marcadores `{{CAMPO}}` en negrilla.
    * Guarda las rutas con **Guardar rutas de plantillas**. La configuración queda persistida en `~/.gobant_rx_tools_gui.json` para futuros usos.
+   * Las plantillas configuradas se encuentran subidas en la carpeta \plantillas del repositorio, debes llenar los datos faltantes al final: Proyectó, Revisó, V.B. Estos datos son confidenciales junto con las firmas, por ende no se pueden compartir en el repositorio. Un saludo al carlitos.
 2. **Carga la fuente o ingresa los datos manualmente.**
    * Usa **Cargar documento .docx** para leer un checklist estándar. La app detecta persona/categoría y rellena el formulario.
    * Si no tienes documento, elige **Ingresar datos manualmente** y llena cada campo directamente en la interfaz.
