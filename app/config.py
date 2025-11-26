@@ -6,8 +6,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_relative_path(path: str) -> str:
-    # Calcula la ruta relativa al directorio raíz del proyecto
+    # Calcula la ruta relativa al directorio raíz del proyecto.
+    # Si el usuario proporciona una ruta absoluta (incluidas rutas Windows como
+    # "C:\\..."), se respeta tal cual para evitar concatenarla con la raíz.
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    if os.path.isabs(path) or ":" in os.path.splitdrive(path)[0]:
+        return os.path.normpath(path)
+
     return os.path.normpath(os.path.join(base_dir, path))
 
 @dataclass(frozen=True)
