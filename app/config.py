@@ -54,6 +54,19 @@ def resolve_service_account_source(value: str) -> str:
 
     return get_relative_path(candidate)
 
+
+def normalize_model_identifier(model: str) -> str:
+    """Asegura que el modelo tenga el prefijo completo `models/`.
+
+    Google GenAI requiere el identificador completo (p. ej. `models/gemini-1.5-flash`).
+    Si el usuario suministra el nombre corto ("gemini-1.5-flash"), se completa
+    automáticamente el prefijo.
+    """
+    cleaned = (model or "").strip()
+    if not cleaned:
+        return ""
+    return cleaned if cleaned.startswith("models/") else f"models/{cleaned}"
+
 @dataclass(frozen=True)
 class Settings:
     spreadsheet_id: str = os.environ.get("SPREADSHEET_ID", "")
@@ -64,7 +77,9 @@ class Settings:
     )
 
     gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
-    gemini_model: str = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+    gemini_model: str = normalize_model_identifier(
+        os.environ.get("GEMINI_MODEL", "models/gemini-1.5-flash")
+    )
 
     out_dir: str = os.environ.get("OUT_DIR", "out_json")
 

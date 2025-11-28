@@ -186,16 +186,30 @@ def _parse_json_loose(raw: str) -> dict:
     txt2 = _fix_trailing_commas(txt)
     return json.loads(txt2)
 
+def _normalize_model_id(name: str) -> str:
+    cleaned = (name or "").strip()
+    if not cleaned:
+        return cleaned
+    return cleaned if cleaned.startswith("models/") else f"models/{cleaned}"
+
+
 class AIClient:
-    def __init__(self, api_key: str, model_name: str = "models/gemini-2.0-flash-lite"):
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "models/gemini-2.0-flash-lite",
+        fallback_model: str = "models/gemini-2.0-flash-lite",
+    ):
         if not api_key:
             raise RuntimeError("Falta GEMINI_API_KEY")
         self.client = genai.Client(api_key=api_key)
-        self.model_name = model_name
+        self.model_name = _normalize_model_id(model_name)
+        self.fallback_model = _normalize_model_id(fallback_model)
 
     def summarize(self, text: str) -> Dict[str, Any]:
         prompt = PROMPT_TEMPLATE.format(texto=text[:25000])  # usa tu PROMPT_TEMPLATE con {{ }} escapadas
         last_err = None
+        active_model = self.model_name
         for attempt in range(3):  # hasta 3 intentos con pequeñas variaciones
             if attempt == 1:
                 # 2º intento: reforzar instrucción de salida única
@@ -206,32 +220,51 @@ class AIClient:
             else:
                 prompt_try = prompt
 
-            resp = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[prompt_try],
-            )
+            models_to_try = [active_model]
+            if self.fallback_model and self.fallback_model != active_model:
+                models_to_try.append(self.fallback_model)
 
-            raw = getattr(resp, "text", None)
-            if not raw and getattr(resp, "candidates", None):
+            for model_try in models_to_try:
                 try:
-                    raw = "".join(
-                        getattr(p, "text", "") for p in resp.candidates[0].content.parts
+                    resp = self.client.models.generate_content(
+                        model=model_try,
+                        contents=[prompt_try],
                     )
                 except Exception as e:
                     last_err = e
-                    raw = ""
+                    if model_try != self.fallback_model and self.fallback_model:
+                        print(
+                            f"[IA] Error con modelo {model_try}: {e}. "
+                            f"Se intentará con {self.fallback_model}."
+                        )
+                        active_model = self.fallback_model
+                        continue
+                    break
+                else:
+                    raw = getattr(resp, "text", None)
+                    if not raw and getattr(resp, "candidates", None):
+                        try:
+                            raw = "".join(
+                                getattr(p, "text", "") for p in resp.candidates[0].content.parts
+                            )
+                        except Exception as e:
+                            last_err = e
+                            raw = ""
 
-            raw = (raw or "").strip()
-            try:
-                payload = _parse_json_loose(raw)
-                # normalizaciones ligeras
-                if isinstance(payload.get("CORREO ELECTRONICO"), str):
-                    payload["CORREO ELECTRONICO"] = payload["CORREO ELECTRONICO"].strip().lower()
-                return payload
-            except Exception as e:
-                last_err = e
-                # pequeño backoff por si el servicio respondió incompleto
-                time.sleep(0.6)
+                    raw = (raw or "").strip()
+                    try:
+                        payload = _parse_json_loose(raw)
+                        # normalizaciones ligeras
+                        if isinstance(payload.get("CORREO ELECTRONICO"), str):
+                            payload["CORREO ELECTRONICO"] = payload["CORREO ELECTRONICO"].strip().lower()
+                        if model_try != active_model:
+                            active_model = model_try
+                        return payload
+                    except Exception as e:
+                        last_err = e
+                        # pequeño backoff por si el servicio respondió incompleto
+                        time.sleep(0.6)
+                        break
 
         # si llegamos aquí, fallaron los 3 intentos → exponemos parte de la salida para depuración
         raise RuntimeError(f"No se pudo parsear JSON del modelo: {last_err}")
