@@ -138,6 +138,58 @@ def _clean_quotes(s: str) -> str:
     return (s.replace("“", '"').replace("”", '"')
              .replace("‘", "'").replace("’", "'"))
 
+
+def _escape_inner_quotes(txt: str) -> str:
+    """Escapa comillas dobles no escapadas dentro de valores string.
+
+    Si el modelo devuelve comillas dobles dentro de un valor (por ejemplo,
+    nombres con comillas tipográficas) sin escaparlas, el JSON queda inválido.
+    Este helper intenta convertir esas comillas internas en `\"` cuando no
+    parecen cerrar el string (es decir, cuando después no viene `,`, `]` o
+    `}`).
+    """
+
+    if '"' not in txt:
+        return txt
+
+    out: list[str] = []
+    in_str = False
+    i = 0
+    while i < len(txt):
+        c = txt[i]
+        if c == '"':
+            # ¿está escapada?
+            if i > 0 and txt[i - 1] == '\\':
+                out.append(c)
+                i += 1
+                continue
+
+            if not in_str:
+                in_str = True
+                out.append(c)
+                i += 1
+                continue
+
+            # Estamos dentro de un string: decidir si es cierre o comilla interna
+            j = i + 1
+            while j < len(txt) and txt[j].isspace():
+                j += 1
+            next_c = txt[j] if j < len(txt) else ''
+            if next_c in {',', '}', ']'}:
+                # Parece un cierre legítimo del string
+                in_str = False
+                out.append(c)
+            else:
+                # Trátalo como comilla interna y escápala
+                out.append('\\"')
+            i += 1
+            continue
+
+        out.append(c)
+        i += 1
+
+    return "".join(out)
+
 def _strip_md_fences(s: str) -> str:
     # si viene en ```json ... ``` o ``` ... ```
     m = re.search(r"```(?:json)?\s*([\s\S]*?)```", s, flags=re.IGNORECASE)
@@ -187,6 +239,13 @@ def _parse_json_loose(raw: str) -> dict:
     txt2 = _fix_trailing_commas(txt)
     try:
         return json.loads(txt2)
+    except Exception:
+        pass
+
+    # intento extra: escapar comillas internas no escapadas
+    try:
+        escaped = _escape_inner_quotes(txt2)
+        return json.loads(escaped)
     except Exception:
         # fallback extra: json-like con comillas simples
         return ast.literal_eval(txt2)
