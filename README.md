@@ -72,6 +72,10 @@ COL_UPDATED=Última actualización
 > Credencial=eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwgLi4ufQ==
 > ```
 
+> ⚠️ Un texto aleatorio (por ejemplo `GOOGLE_APPLICATION_CREDENTIALS=alajkqwejlknqdlknasn`) **no funciona**: Google exige las
+> credenciales completas de una **cuenta de servicio** en formato JSON (o su base64) o bien la ruta al archivo `.json` descargado
+> desde la consola de Google Cloud.
+
 ---
 
 ### ¿De dónde saco cada variable?

@@ -53,7 +53,12 @@ def get_credentials(sa_source: str):
         return creds
 
     raise FileNotFoundError(
-        "No se encontró un archivo de credenciales ni un JSON/base64 válido en GOOGLE_APPLICATION_CREDENTIALS."
+        (
+            "GOOGLE_APPLICATION_CREDENTIALS debe contener credenciales válidas de cuenta de servicio. "
+            "Usa uno de estos formatos: ruta a un archivo .json descargado desde Google Cloud, "
+            "el JSON completo pegado en la variable, su base64 o el nombre de otra variable con ese JSON/base64. "
+            "Un token plano (ej. 'alajkqwejlknqdlknasn') no sirve: Google requiere el JSON estructurado del Service Account."
+        )
     )
 
 
