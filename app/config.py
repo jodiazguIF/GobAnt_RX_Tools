@@ -26,27 +26,33 @@ def resolve_service_account_source(value: str) -> str:
 
     * Si el valor parece un JSON (o su base64), se devuelve tal cual para que
       el cargador use `from_service_account_info`.
+    * Si el valor apunta al nombre de otra variable de entorno con el JSON/base64
+      (ej. `GOOGLE_APPLICATION_CREDENTIALS=Credencial` y `Credencial` guarda el
+      secreto), se usa ese contenido.
     * Para rutas, se normaliza contra la raíz del proyecto.
     """
     raw = (value or "").strip()
     if not raw:
         return raw
 
+    alias_value = os.environ.get(raw)
+    candidate = alias_value.strip() if alias_value else raw
+
     # JSON directo
-    if raw.lstrip().startswith("{"):
-        return raw
+    if candidate.lstrip().startswith("{"):
+        return candidate
 
     # Base64 que decodifica a JSON
     try:
         import base64, json
 
-        decoded = base64.b64decode(raw.encode()).decode()
+        decoded = base64.b64decode(candidate.encode()).decode()
         if decoded.lstrip().startswith("{") and json.loads(decoded):
-            return raw
+            return candidate
     except Exception:
         pass
 
-    return get_relative_path(raw)
+    return get_relative_path(candidate)
 
 @dataclass(frozen=True)
 class Settings:

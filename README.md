@@ -65,6 +65,11 @@ COL_UPDATED=Última actualización
 >
 > # O el mismo JSON en base64 (sin espacios ni saltos de línea)
 > GOOGLE_APPLICATION_CREDENTIALS=eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwgLi4ufQ==
+>
+> # O apunta a otra variable de entorno que contenga el JSON/base64
+> # (útil en pipelines/CI):
+> GOOGLE_APPLICATION_CREDENTIALS=Credencial
+> Credencial=eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwgLi4ufQ==
 > ```
 
 ---
