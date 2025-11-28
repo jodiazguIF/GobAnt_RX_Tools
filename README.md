@@ -83,13 +83,31 @@ COL_UPDATED=Última actualización
 * **SPREADSHEET_ID**: abre tu Google Sheets en el navegador y copia el tramo de la URL entre `/d/` y `/edit` (ejemplo: `https://docs.google.com/spreadsheets/d/1AbCDEF...XYZ/edit`).
 * **WORKSHEET_NAME**: nombre de la pestaña dentro del archivo (se ve en la barra inferior de Sheets).
 * **DRIVE_FOLDER_ID**: abre la carpeta en drive.google.com y toma el segmento después de `folders/` en la URL.
-* **GOOGLE_APPLICATION_CREDENTIALS**: puedes apuntar a la **ruta local** del archivo JSON del Service Account (descárgalo desde la consola de Google Cloud → *IAM y administración* → *Cuentas de servicio* → selecciona la cuenta → *Claves* → *Agregar clave* → *Crear nueva clave* → JSON) **o pegar el contenido completo del JSON (o su base64) directamente en la variable**.
+* **GOOGLE_APPLICATION_CREDENTIALS**: puedes apuntar a la **ruta local** del archivo JSON del Service Account (descárgalo siguiendo los pasos de la sección "Cómo descargar el JSON de credenciales") **o pegar el contenido completo del JSON (o su base64) directamente en la variable**.
 * **GEMINI_API_KEY**: crea o recupera tu API Key en [ai.google.dev](https://ai.google.dev) (sección *Get API key*) y pégala tal cual.
 * **GEMINI_MODEL**: nombre del modelo a usar; el valor por defecto `gemini-1.5-flash` funciona para la mayoría de casos.
 * **OUT_DIR**: carpeta local donde guardar los JSON generados; se crea automáticamente si no existe.
 * **COL_\***: nombres exactos de las columnas en tu hoja (Radicado/Observaciones/Archivo/Última actualización). Ajusta si tu hoja usa títulos distintos.
 
 Ten en cuenta que las rutas absolutas (incluidas las de Windows con letra de unidad) se respetan; las rutas relativas se interpretan desde la raíz del proyecto.
+
+---
+
+## ¿Cómo descargar el JSON de credenciales?
+
+1. Entra a [console.cloud.google.com](https://console.cloud.google.com) con tu cuenta de Google y selecciona el proyecto adecuado (o crea uno nuevo).
+2. Ve a **IAM y administración → Cuentas de servicio**.
+3. Crea una cuenta de servicio (o reutiliza una existente) y asígnale un rol que permita acceder a Drive y Sheets, por ejemplo:
+   * **Project → Editor** para pruebas rápidas, o
+   * Roles específicos: **Drive API → Drive File Viewer** y **Sheets API → Sheets Reader** (ajusta según tus necesidades).
+4. Con la cuenta de servicio seleccionada, abre la pestaña **Claves** → clic en **Agregar clave** → **Crear nueva clave** → tipo **JSON** → **Crear**.
+5. Se descargará automáticamente un archivo `*.json` con el contenido de la credencial de la cuenta de servicio.
+6. Guarda ese archivo en un lugar seguro y apunta la variable `GOOGLE_APPLICATION_CREDENTIALS` a su ruta, por ejemplo:
+   * Linux/macOS: `/home/usuario/keys/mi-service-account.json`
+   * Windows: `C:\\Users\\TuUsuario\\keys\\mi-service-account.json`
+7. Opcional: si prefieres no manejar archivos en disco, abre el JSON en un editor y pega **todo su contenido** en la variable `GOOGLE_APPLICATION_CREDENTIALS` (o en otra variable a la que esta apunte), o bien conviértelo a base64 y pega esa cadena.
+
+> Consejo: comparte la carpeta de Drive y el archivo de Sheets con el correo de la cuenta de servicio (termina en `@iam.gserviceaccount.com`). Sin permisos, la app no podrá leer/escribir.
 
 ---
 
