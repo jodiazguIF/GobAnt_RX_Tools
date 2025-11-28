@@ -38,7 +38,7 @@ WORKSHEET_NAME=Base_Maestra             # Nombre de la pestaña dentro del archi
 # Google Drive
 DRIVE_FOLDER_ID=0BxxYYzz...             # ID de la carpeta con .docx a procesar
 
-# Credenciales GCP
+# Credenciales GCP (ruta al archivo o contenido JSON/base64)
 GOOGLE_APPLICATION_CREDENTIALS=/ruta/a/tu/service_account.json
 
 # Gemini
@@ -56,6 +56,16 @@ COL_UPDATED=Última actualización
 ```
 
 > Si usas Windows, coloca rutas tipo `C:\\ruta\\service_account.json`.
+> 
+> ¿Prefieres pegar las credenciales? También funciona:
+> 
+> ```dotenv
+> # JSON completo pegado directamente
+> GOOGLE_APPLICATION_CREDENTIALS={"type":"service_account",...}
+>
+> # O el mismo JSON en base64 (sin espacios ni saltos de línea)
+> GOOGLE_APPLICATION_CREDENTIALS=eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwgLi4ufQ==
+> ```
 
 ---
 
@@ -64,7 +74,7 @@ COL_UPDATED=Última actualización
 * **SPREADSHEET_ID**: abre tu Google Sheets en el navegador y copia el tramo de la URL entre `/d/` y `/edit` (ejemplo: `https://docs.google.com/spreadsheets/d/1AbCDEF...XYZ/edit`).
 * **WORKSHEET_NAME**: nombre de la pestaña dentro del archivo (se ve en la barra inferior de Sheets).
 * **DRIVE_FOLDER_ID**: abre la carpeta en drive.google.com y toma el segmento después de `folders/` en la URL.
-* **GOOGLE_APPLICATION_CREDENTIALS**: ruta local al archivo JSON del Service Account (descárgalo desde la consola de Google Cloud → *IAM y administración* → *Cuentas de servicio* → selecciona la cuenta → *Claves* → *Agregar clave* → *Crear nueva clave* → JSON).
+* **GOOGLE_APPLICATION_CREDENTIALS**: puedes apuntar a la **ruta local** del archivo JSON del Service Account (descárgalo desde la consola de Google Cloud → *IAM y administración* → *Cuentas de servicio* → selecciona la cuenta → *Claves* → *Agregar clave* → *Crear nueva clave* → JSON) **o pegar el contenido completo del JSON (o su base64) directamente en la variable**.
 * **GEMINI_API_KEY**: crea o recupera tu API Key en [ai.google.dev](https://ai.google.dev) (sección *Get API key*) y pégala tal cual.
 * **GEMINI_MODEL**: nombre del modelo a usar; el valor por defecto `gemini-1.5-flash` funciona para la mayoría de casos.
 * **OUT_DIR**: carpeta local donde guardar los JSON generados; se crea automáticamente si no existe.

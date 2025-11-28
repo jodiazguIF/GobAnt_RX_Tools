@@ -5,10 +5,13 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 load_dotenv()
 
+
 def get_relative_path(path: str) -> str:
-    # Calcula la ruta relativa al directorio raíz del proyecto.
-    # Si el usuario proporciona una ruta absoluta (incluidas rutas Windows como
-    # "C:\\..."), se respeta tal cual para evitar concatenarla con la raíz.
+    """
+    Calcula la ruta relativa al directorio raíz del proyecto.
+    Si el usuario proporciona una ruta absoluta (incluidas rutas Windows como
+    "C:\\..."), se respeta tal cual para evitar concatenarla con la raíz.
+    """
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     if os.path.isabs(path) or ":" in os.path.splitdrive(path)[0]:
@@ -16,12 +19,43 @@ def get_relative_path(path: str) -> str:
 
     return os.path.normpath(os.path.join(base_dir, path))
 
+
+def resolve_service_account_source(value: str) -> str:
+    """
+    Devuelve la ruta o el JSON/base64 original de credenciales.
+
+    * Si el valor parece un JSON (o su base64), se devuelve tal cual para que
+      el cargador use `from_service_account_info`.
+    * Para rutas, se normaliza contra la raíz del proyecto.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return raw
+
+    # JSON directo
+    if raw.lstrip().startswith("{"):
+        return raw
+
+    # Base64 que decodifica a JSON
+    try:
+        import base64, json
+
+        decoded = base64.b64decode(raw.encode()).decode()
+        if decoded.lstrip().startswith("{") and json.loads(decoded):
+            return raw
+    except Exception:
+        pass
+
+    return get_relative_path(raw)
+
 @dataclass(frozen=True)
 class Settings:
     spreadsheet_id: str = os.environ.get("SPREADSHEET_ID", "")
     worksheet_name: str = os.environ.get("WORKSHEET_NAME", "Base_Maestra")
     drive_folder_id: str = os.environ.get("DRIVE_FOLDER_ID", "")
-    service_account_path: str = get_relative_path(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "credentials_google_drive.json"))
+    service_account_source: str = resolve_service_account_source(
+        os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "credentials_google_drive.json")
+    )
 
     gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
     gemini_model: str = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")

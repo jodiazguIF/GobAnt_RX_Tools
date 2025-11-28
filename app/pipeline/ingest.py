@@ -14,7 +14,7 @@ from app.utils import radicado as rad
 
 class IngestPipeline:
     def __init__(self):
-        self.creds = get_credentials(settings.service_account_path)
+        self.creds = get_credentials(settings.service_account_source)
         drive_service, sheets_service = build_clients(self.creds)
         self.drive = DriveClient(drive_service)
         self.sheets = SheetsTable(
