@@ -1,4 +1,5 @@
 # app/services/ai_client.py
+import ast
 import json
 import re
 from typing import Dict, Any
@@ -184,7 +185,18 @@ def _parse_json_loose(raw: str) -> dict:
             return json.loads(block2)
     # último intento: quitar comas colgantes globalmente
     txt2 = _fix_trailing_commas(txt)
-    return json.loads(txt2)
+    try:
+        return json.loads(txt2)
+    except Exception:
+        # fallback extra: json-like con comillas simples
+        return ast.literal_eval(txt2)
+
+
+def _compact_excerpt(raw: str, limit: int = 280) -> str:
+    cleaned = re.sub(r"\s+", " ", raw.strip())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit] + "…"
 
 def _normalize_model_id(name: str) -> str:
     cleaned = (name or "").strip()
@@ -209,14 +221,22 @@ class AIClient:
     def summarize(self, text: str) -> Dict[str, Any]:
         prompt = PROMPT_TEMPLATE.format(texto=text[:25000])  # usa tu PROMPT_TEMPLATE con {{ }} escapadas
         last_err = None
+        last_raw = None
         active_model = self.model_name
-        for attempt in range(3):  # hasta 3 intentos con pequeñas variaciones
+        for attempt in range(4):  # hasta 4 intentos con pequeñas variaciones
             if attempt == 1:
                 # 2º intento: reforzar instrucción de salida única
                 prompt_try = prompt + "\n\nDevuelve únicamente un bloque JSON válido, sin comentarios, sin Markdown."
             elif attempt == 2:
                 # 3º intento: recortar un poco más el texto por si hay límite de tokens
                 prompt_try = PROMPT_TEMPLATE.format(texto=text[:18000])
+            elif attempt == 3:
+                # 4º intento: insistir en validar el JSON antes de responder
+                prompt_try = (
+                    prompt
+                    + "\n\nValida con json.loads que el resultado sea JSON estricto antes de responder."
+                    + " Usa solo comillas dobles y sin comentarios."
+                )
             else:
                 prompt_try = prompt
 
@@ -251,6 +271,7 @@ class AIClient:
                             last_err = e
                             raw = ""
 
+                    last_raw = raw
                     raw = (raw or "").strip()
                     try:
                         payload = _parse_json_loose(raw)
@@ -262,10 +283,16 @@ class AIClient:
                         return payload
                     except Exception as e:
                         last_err = e
+                        if raw:
+                            print(
+                                f"[IA] Respuesta no fue JSON válido (intento {attempt+1}, modelo {model_try}): "
+                                f"{_compact_excerpt(raw)}"
+                            )
                         # pequeño backoff por si el servicio respondió incompleto
                         time.sleep(0.6)
                         break
 
-        # si llegamos aquí, fallaron los 3 intentos → exponemos parte de la salida para depuración
-        raise RuntimeError(f"No se pudo parsear JSON del modelo: {last_err}")
+        # si llegamos aquí, fallaron todos los intentos → exponemos parte de la salida para depuración
+        snippet = f" | fragmento: {_compact_excerpt(last_raw)}" if last_raw else ""
+        raise RuntimeError(f"No se pudo parsear JSON del modelo: {last_err}{snippet}")
 
