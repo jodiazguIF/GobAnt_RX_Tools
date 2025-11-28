@@ -175,7 +175,7 @@ def _escape_inner_quotes(txt: str) -> str:
             while j < len(txt) and txt[j].isspace():
                 j += 1
             next_c = txt[j] if j < len(txt) else ''
-            if next_c in {',', '}', ']'}:
+            if next_c in {',', '}', ']', ':'}:
                 # Parece un cierre legítimo del string
                 in_str = False
                 out.append(c)
@@ -234,7 +234,10 @@ def _parse_json_loose(raw: str) -> dict:
         except Exception:
             # arreglar comas colgantes y reintentar
             block2 = _fix_trailing_commas(block)
-            return json.loads(block2)
+            try:
+                return json.loads(block2)
+            except Exception:
+                pass
     # último intento: quitar comas colgantes globalmente
     txt2 = _fix_trailing_commas(txt)
     try:
