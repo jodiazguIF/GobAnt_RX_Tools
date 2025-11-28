@@ -3,7 +3,8 @@ import os
 import json
 import glob
 import time
-from typing import Dict, Any, Optional, List
+from collections import Counter
+from typing import Any, Callable, Dict, List, Optional
 from app.config import settings
 from app.services.google_auth import get_credentials, build_clients
 from app.services.drive_client import DriveClient
@@ -13,7 +14,11 @@ from app.utils import radicado as rad
 
 
 class IngestPipeline:
-    def __init__(self):
+    def __init__(
+        self,
+        log_fn: Optional[Callable[[str], None]] = None,
+        should_stop: Optional[Callable[[], bool]] = None,
+    ):
         self.creds = get_credentials(settings.service_account_source)
         drive_service, sheets_service = build_clients(self.creds)
         self.drive = DriveClient(drive_service)
@@ -21,6 +26,8 @@ class IngestPipeline:
             sheets_service, settings.spreadsheet_id, settings.worksheet_name
         )
         self.ai = AIClient(settings.gemini_api_key, settings.gemini_model)
+        self._log_fn = log_fn or print
+        self._should_stop = should_stop or (lambda: False)
 
     # ---------- Cache local (clave compuesta: radicado + prefijo de file_id) ----------
     def _cache_key(self, radicado: str, file_id: Optional[str], filename: Optional[str]) -> str:
@@ -34,6 +41,18 @@ class IngestPipeline:
     def _json_path(self, cache_key: str) -> str:
         os.makedirs(settings.out_dir, exist_ok=True)
         return os.path.join(settings.out_dir, f"{cache_key}.json")
+
+    def set_logger(self, log_fn: Callable[[str], None]) -> None:
+        self._log_fn = log_fn
+
+    def set_stop_checker(self, should_stop: Callable[[], bool]) -> None:
+        self._should_stop = should_stop
+
+    def _log(self, message: str) -> None:
+        self._log_fn(message)
+
+    def _stop_requested(self) -> bool:
+        return bool(self._should_stop())
 
     def _load_json_if_exists(self, cache_key: str) -> Optional[Dict[str, Any]]:
         path = self._json_path(cache_key)
@@ -58,40 +77,96 @@ class IngestPipeline:
     def process_folder(self) -> None:
         files = self.drive.list_docx_in_folder(settings.drive_folder_id)
         if not files:
-            print("No se encontraron .docx en la carpeta.")
+            self._log("No se encontraron .docx en la carpeta.")
             return
-        print(f"Se encontraron {len(files)} archivo(s).")
-        for f in files:
+        self._log(f"Se encontraron {len(files)} archivo(s).")
+        summary = {"processed": 0, "uploads": 0, "already": 0, "errors": 0}
+        total = len(files)
+        for idx, f in enumerate(files, start=1):
+            if self._stop_requested():
+                self._log("Ejecución detenida por el usuario. Se interrumpe el recorrido.")
+                break
+            self._log(f"[{idx}/{total}] Procesando {f['name']}…")
             try:
-                self.process_one(f["id"], f["name"])
+                result = self.process_one(f["id"], f["name"])
+                summary["processed"] += 1
+                summary["uploads"] += result.get("uploads", 0)
+                summary["already"] += result.get("noop", 0)
             except Exception as e:
-                print(f"[ERROR] {f.get('name')}: {e}")
+                summary["errors"] += 1
+                self._log(f"[ERROR] {f.get('name')}: {e}")
+
+        self._log(
+            "Resumen: "
+            f"{summary['uploads']} informes escritos, "
+            f"{summary['already']} ya estaban en Sheets, "
+            f"{summary['errors']} errores."
+        )
 
     def process_folder_only_new(self) -> None:
         """Procesa solo los archivos que aún no tengan cache local."""
         files = self.drive.list_docx_in_folder(settings.drive_folder_id)
         if not files:
-            print("No se encontraron .docx en la carpeta.")
+            self._log("No se encontraron .docx en la carpeta.")
             return
-        print(f"Se encontraron {len(files)} archivo(s).")
-        for f in files:
+        self._log(f"Se encontraron {len(files)} archivo(s).")
+        summary = {
+            "processed": 0,
+            "uploads": 0,
+            "already": 0,
+            "errors": 0,
+            "skipped_cache": 0,
+        }
+        total = len(files)
+        for idx, f in enumerate(files, start=1):
+            if self._stop_requested():
+                self._log("Ejecución detenida por el usuario. Se interrumpe el recorrido.")
+                break
+            self._log(f"[{idx}/{total}] Procesando {f['name']}…")
             try:
                 if self._has_cache_for_file(f["id"]):
-                    print(f"→ Cache encontrado, se omite: {f['name']} ({f['id']})")
+                    summary["skipped_cache"] += 1
+                    self._log(
+                        f"→ Cache encontrado, se omite: {f['name']} ({f['id']})"
+                    )
                     continue
-                self.process_one(f["id"], f["name"])
+                result = self.process_one(f["id"], f["name"])
+                summary["processed"] += 1
+                summary["uploads"] += result.get("uploads", 0)
+                summary["already"] += result.get("noop", 0)
             except Exception as e:
-                print(f"[ERROR] {f.get('name')}: {e}")
+                summary["errors"] += 1
+                self._log(f"[ERROR] {f.get('name')}: {e}")
+
+        self._log(
+            "Resumen: "
+            f"{summary['uploads']} informes escritos, "
+            f"{summary['already']} ya estaban en Sheets, "
+            f"{summary['skipped_cache']} con cache local, "
+            f"{summary['errors']} errores."
+        )
 
     def process_folder_only_pending(self) -> None:
         """Procesa únicamente archivos cuyo radicado no tenga aún información en la
         columna de observaciones (ETIQUETA IA) en la hoja."""
         files = self.drive.list_docx_in_folder(settings.drive_folder_id)
         if not files:
-            print("No se encontraron .docx en la carpeta.")
+            self._log("No se encontraron .docx en la carpeta.")
             return
-        print(f"Se encontraron {len(files)} archivo(s).")
-        for f in files:
+        self._log(f"Se encontraron {len(files)} archivo(s).")
+        summary = {
+            "processed": 0,
+            "uploads": 0,
+            "already": 0,
+            "errors": 0,
+            "skipped_cache": 0,
+        }
+        total = len(files)
+        for idx, f in enumerate(files, start=1):
+            if self._stop_requested():
+                self._log("Ejecución detenida por el usuario. Se interrumpe el recorrido.")
+                break
+            self._log(f"[{idx}/{total}] Procesando {f['name']}…")
             try:
                 file_id, filename = f["id"], f["name"]
                 radicado: Optional[str] = None
@@ -117,12 +192,24 @@ class IngestPipeline:
                 if radicado and self.sheets.has_value_in_column(
                     settings.col_radicado, radicado, settings.col_obs
                 ):
-                    print(f"→ Ya subido, se omite: {filename} ({radicado})")
+                    summary["already"] += 1
+                    self._log(f"→ Ya subido, se omite: {filename} ({radicado})")
                     continue
 
-                self.process_one(file_id, filename)
+                result = self.process_one(file_id, filename)
+                summary["processed"] += 1
+                summary["uploads"] += result.get("uploads", 0)
+                summary["already"] += result.get("noop", 0)
             except Exception as e:
-                print(f"[ERROR] {f.get('name')}: {e}")
+                summary["errors"] += 1
+                self._log(f"[ERROR] {f.get('name')}: {e}")
+
+        self._log(
+            "Resumen: "
+            f"{summary['uploads']} informes escritos, "
+            f"{summary['already']} ya estaban en Sheets o cache, "
+            f"{summary['errors']} errores."
+        )
 
     def _ensure_equipos_array(self, data: Dict[str, Any]) -> None:
         """
@@ -174,8 +261,10 @@ class IngestPipeline:
             rows.append(row)
         return rows
 
-    def process_one(self, file_id: str, filename: str, skip_sheet_if_cached: bool = False) -> None:
-        print(f"→ Procesando: {filename} ({file_id})")
+    def process_one(
+        self, file_id: str, filename: str, skip_sheet_if_cached: bool = False
+    ) -> Dict[str, Any]:
+        self._log(f"→ Procesando: {filename} ({file_id})")
         text = self.drive.download_docx_text(file_id)
 
         # 1) Radicado
@@ -188,13 +277,15 @@ class IngestPipeline:
         cache_key = self._cache_key(radicado, file_id, filename)
         data = self._load_json_if_exists(cache_key)
         if data is None:
-            print(f"   Sin cache para {radicado}. Ejecutando IA …")
+            self._log(f"   Sin cache para {radicado}. Ejecutando IA …")
             data = self.ai.summarize(text)
         else:
-            print(f"   Cache JSON encontrado para {radicado} ({filename}). Omitiendo IA.")
+            self._log(
+                f"   Cache JSON encontrado para {radicado} ({filename}). Omitiendo IA."
+            )
             if skip_sheet_if_cached:
-                print("   Omitiendo subida a Sheets por cache existente.")
-                return
+                self._log("   Omitiendo subida a Sheets por cache existente.")
+                return {"radicado": radicado, "uploads": 0, "noop": 1, "actions": {}}
 
         # 3) Normalizaciones mínimas de licencia
         if "Radicado" in data and "RADICADO" not in data:
@@ -207,7 +298,7 @@ class IngestPipeline:
 
         # 5) Guardar/actualizar cache local (persistir normalizaciones)
         path = self._save_json(cache_key, data)
-        print(f"   JSON: {path}")
+        self._log(f"   JSON: {path}")
 
         # 6) Expandir a filas y escribir en Sheets (solo vacíos)
         rows = self._rows_from_data(data, filename)
@@ -251,4 +342,18 @@ class IngestPipeline:
                 },
             )
             results.append(result)
-        print(f"   Sheets: {results}")
+        actions = Counter(r.get("action", "") for r in results if isinstance(r, dict))
+        uploads = sum(
+            count for action, count in actions.items() if action and action != "noop"
+        )
+        self._log(
+            "   Sheets: "
+            f"{results}"
+        )
+        return {
+            "radicado": radicado,
+            "uploads": uploads,
+            "noop": actions.get("noop", 0),
+            "actions": dict(actions),
+            "cache_path": path,
+        }
