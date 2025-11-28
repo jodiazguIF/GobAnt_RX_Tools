@@ -78,6 +78,7 @@ class LicenseGeneratorWindow(QMainWindow):
         self.license_log: Optional[QPlainTextEdit] = None
         self.pipeline_log: Optional[QPlainTextEdit] = None
         self.qc_log: Optional[QPlainTextEdit] = None
+        self._pipeline_stop_requested: bool = False
 
         self.qc_table: Optional[QTableWidget] = None
         self.qc_folder_label: Optional[QLabel] = None
@@ -414,6 +415,10 @@ class LicenseGeneratorWindow(QMainWindow):
         btn_pending = QPushButton("Solo pendientes")
         btn_pending.clicked.connect(lambda: self.run_pipeline_task("process_folder_only_pending"))
         buttons_layout.addWidget(btn_pending)
+
+        stop_btn = QPushButton("Detener")
+        stop_btn.clicked.connect(self.request_pipeline_stop)
+        buttons_layout.addWidget(stop_btn)
 
         layout.addWidget(buttons_container)
         layout.addWidget(self._build_log_section("pipeline_log", "Bitácora"))
@@ -1030,9 +1035,16 @@ class LicenseGeneratorWindow(QMainWindow):
             drive_file = pipeline.drive.upload_docx(settings.drive_folder_id, doc_path)
             pipeline.process_one(drive_file["id"], drive_file["name"])
 
-    def _ensure_pipeline(self) -> IngestPipeline:
+    def _ensure_pipeline(self, progress_cb=None) -> IngestPipeline:
         if not self.pipeline:
-            self.pipeline = IngestPipeline()
+            self.pipeline = IngestPipeline(
+                log_fn=progress_cb or self.log_pipeline,
+                should_stop=self._pipeline_should_stop,
+            )
+        else:
+            if progress_cb:
+                self.pipeline.set_logger(progress_cb)
+            self.pipeline.set_stop_checker(self._pipeline_should_stop)
         return self.pipeline
 
     def _show_worker_error(self, context: str, exc: Exception) -> None:
@@ -1044,16 +1056,26 @@ class LicenseGeneratorWindow(QMainWindow):
         QMessageBox.critical(self, "Error", message)
 
     def run_pipeline_task(self, method_name: str) -> None:
+        self._pipeline_stop_requested = False
         self.log_pipeline(f"Ejecutando {method_name}…")
         worker = Worker(self._run_pipeline_method, method_name)
+        worker.kwargs["progress_cb"] = worker.signals.progress.emit
+        worker.signals.progress.connect(self.log_pipeline)
         worker.signals.finished.connect(lambda _: self.log_pipeline("Tarea finalizada."))
         worker.signals.error.connect(lambda exc: self._show_worker_error("pipeline", exc))
         self.thread_pool.start(worker)
 
-    def _run_pipeline_method(self, method_name: str) -> None:
-        pipeline = self._ensure_pipeline()
+    def _run_pipeline_method(self, method_name: str, progress_cb=None) -> None:
+        pipeline = self._ensure_pipeline(progress_cb)
         method = getattr(pipeline, method_name)
         method()
+
+    def request_pipeline_stop(self) -> None:
+        self._pipeline_stop_requested = True
+        self.log_pipeline("Detención solicitada. Se detendrá al finalizar el archivo en curso.")
+
+    def _pipeline_should_stop(self) -> bool:
+        return self._pipeline_stop_requested
 
     def log(self, message: str) -> None:
         self._append_to_log(self.license_log, message)
