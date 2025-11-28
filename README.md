@@ -55,10 +55,13 @@ COL_ARCHIVO=Archivo
 COL_UPDATED=Última actualización
 ```
 
-> Si usas Windows, coloca rutas tipo `C:\\ruta\\service_account.json`.
-> 
+> Si usas Windows, coloca rutas tipo `C:\\ruta\\service_account.json` (o con `/`).
+> Evita dejar comillas dobles al guardar la variable en el `.env`; si el archivo
+> está en tu PC pero la app corre en un contenedor/CI, monta o copia la ruta
+> correcta porque el contenedor no ve rutas locales como `C:\\Users\\...`.
+>
 > ¿Prefieres pegar las credenciales? También funciona:
-> 
+>
 > ```dotenv
 > # JSON completo pegado directamente
 > GOOGLE_APPLICATION_CREDENTIALS={"type":"service_account",...}

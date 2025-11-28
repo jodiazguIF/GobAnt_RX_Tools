@@ -6,6 +6,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _strip_wrapping_quotes(value: str) -> str:
+    """Elimina comillas de envoltura si el valor viene como '..." o "...'"""
+
+    if not value:
+        return value
+
+    value = value.strip()
+    if (value.startswith("\"") and value.endswith("\"")) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        return value[1:-1].strip()
+    return value
+
+
 def get_relative_path(path: str) -> str:
     """
     Calcula la ruta relativa al directorio raíz del proyecto.
@@ -13,11 +27,12 @@ def get_relative_path(path: str) -> str:
     "C:\\..."), se respeta tal cual para evitar concatenarla con la raíz.
     """
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    normalized = os.path.expanduser(_strip_wrapping_quotes(path))
 
-    if os.path.isabs(path) or ":" in os.path.splitdrive(path)[0]:
-        return os.path.normpath(path)
+    if os.path.isabs(normalized) or ":" in os.path.splitdrive(normalized)[0]:
+        return os.path.normpath(normalized)
 
-    return os.path.normpath(os.path.join(base_dir, path))
+    return os.path.normpath(os.path.join(base_dir, normalized))
 
 
 def resolve_service_account_source(value: str) -> str:
@@ -31,12 +46,12 @@ def resolve_service_account_source(value: str) -> str:
       secreto), se usa ese contenido.
     * Para rutas, se normaliza contra la raíz del proyecto.
     """
-    raw = (value or "").strip()
+    raw = _strip_wrapping_quotes(value or "")
     if not raw:
         return raw
 
     alias_value = os.environ.get(raw)
-    candidate = alias_value.strip() if alias_value else raw
+    candidate = _strip_wrapping_quotes(alias_value) if alias_value else raw
 
     # JSON directo
     if candidate.lstrip().startswith("{"):
