@@ -1,4 +1,5 @@
 # app/services/ai_client.py
+import ast
 import json
 import re
 from typing import Dict, Any
@@ -137,6 +138,58 @@ def _clean_quotes(s: str) -> str:
     return (s.replace("“", '"').replace("”", '"')
              .replace("‘", "'").replace("’", "'"))
 
+
+def _escape_inner_quotes(txt: str) -> str:
+    """Escapa comillas dobles no escapadas dentro de valores string.
+
+    Si el modelo devuelve comillas dobles dentro de un valor (por ejemplo,
+    nombres con comillas tipográficas) sin escaparlas, el JSON queda inválido.
+    Este helper intenta convertir esas comillas internas en `\"` cuando no
+    parecen cerrar el string (es decir, cuando después no viene `,`, `]` o
+    `}`).
+    """
+
+    if '"' not in txt:
+        return txt
+
+    out: list[str] = []
+    in_str = False
+    i = 0
+    while i < len(txt):
+        c = txt[i]
+        if c == '"':
+            # ¿está escapada?
+            if i > 0 and txt[i - 1] == '\\':
+                out.append(c)
+                i += 1
+                continue
+
+            if not in_str:
+                in_str = True
+                out.append(c)
+                i += 1
+                continue
+
+            # Estamos dentro de un string: decidir si es cierre o comilla interna
+            j = i + 1
+            while j < len(txt) and txt[j].isspace():
+                j += 1
+            next_c = txt[j] if j < len(txt) else ''
+            if next_c in {',', '}', ']', ':'}:
+                # Parece un cierre legítimo del string
+                in_str = False
+                out.append(c)
+            else:
+                # Trátalo como comilla interna y escápala
+                out.append('\\"')
+            i += 1
+            continue
+
+        out.append(c)
+        i += 1
+
+    return "".join(out)
+
 def _strip_md_fences(s: str) -> str:
     # si viene en ```json ... ``` o ``` ... ```
     m = re.search(r"```(?:json)?\s*([\s\S]*?)```", s, flags=re.IGNORECASE)
@@ -181,58 +234,127 @@ def _parse_json_loose(raw: str) -> dict:
         except Exception:
             # arreglar comas colgantes y reintentar
             block2 = _fix_trailing_commas(block)
-            return json.loads(block2)
+            try:
+                return json.loads(block2)
+            except Exception:
+                pass
     # último intento: quitar comas colgantes globalmente
     txt2 = _fix_trailing_commas(txt)
-    return json.loads(txt2)
+    try:
+        return json.loads(txt2)
+    except Exception:
+        pass
+
+    # intento extra: escapar comillas internas no escapadas
+    try:
+        escaped = _escape_inner_quotes(txt2)
+        return json.loads(escaped)
+    except Exception:
+        # fallback extra: json-like con comillas simples
+        return ast.literal_eval(txt2)
+
+
+def _compact_excerpt(raw: str, limit: int = 280) -> str:
+    cleaned = re.sub(r"\s+", " ", raw.strip())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit] + "…"
+
+def _normalize_model_id(name: str) -> str:
+    cleaned = (name or "").strip()
+    if not cleaned:
+        return cleaned
+    return cleaned if cleaned.startswith("models/") else f"models/{cleaned}"
+
 
 class AIClient:
-    def __init__(self, api_key: str, model_name: str = "models/gemini-2.0-flash-lite"):
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "models/gemini-2.0-flash-lite",
+        fallback_model: str = "models/gemini-2.0-flash-lite",
+    ):
         if not api_key:
             raise RuntimeError("Falta GEMINI_API_KEY")
         self.client = genai.Client(api_key=api_key)
-        self.model_name = model_name
+        self.model_name = _normalize_model_id(model_name)
+        self.fallback_model = _normalize_model_id(fallback_model)
 
     def summarize(self, text: str) -> Dict[str, Any]:
         prompt = PROMPT_TEMPLATE.format(texto=text[:25000])  # usa tu PROMPT_TEMPLATE con {{ }} escapadas
         last_err = None
-        for attempt in range(3):  # hasta 3 intentos con pequeñas variaciones
+        last_raw = None
+        active_model = self.model_name
+        for attempt in range(4):  # hasta 4 intentos con pequeñas variaciones
             if attempt == 1:
                 # 2º intento: reforzar instrucción de salida única
                 prompt_try = prompt + "\n\nDevuelve únicamente un bloque JSON válido, sin comentarios, sin Markdown."
             elif attempt == 2:
                 # 3º intento: recortar un poco más el texto por si hay límite de tokens
                 prompt_try = PROMPT_TEMPLATE.format(texto=text[:18000])
+            elif attempt == 3:
+                # 4º intento: insistir en validar el JSON antes de responder
+                prompt_try = (
+                    prompt
+                    + "\n\nValida con json.loads que el resultado sea JSON estricto antes de responder."
+                    + " Usa solo comillas dobles y sin comentarios."
+                )
             else:
                 prompt_try = prompt
 
-            resp = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[prompt_try],
-            )
+            models_to_try = [active_model]
+            if self.fallback_model and self.fallback_model != active_model:
+                models_to_try.append(self.fallback_model)
 
-            raw = getattr(resp, "text", None)
-            if not raw and getattr(resp, "candidates", None):
+            for model_try in models_to_try:
                 try:
-                    raw = "".join(
-                        getattr(p, "text", "") for p in resp.candidates[0].content.parts
+                    resp = self.client.models.generate_content(
+                        model=model_try,
+                        contents=[prompt_try],
                     )
                 except Exception as e:
                     last_err = e
-                    raw = ""
+                    if model_try != self.fallback_model and self.fallback_model:
+                        print(
+                            f"[IA] Error con modelo {model_try}: {e}. "
+                            f"Se intentará con {self.fallback_model}."
+                        )
+                        active_model = self.fallback_model
+                        continue
+                    break
+                else:
+                    raw = getattr(resp, "text", None)
+                    if not raw and getattr(resp, "candidates", None):
+                        try:
+                            raw = "".join(
+                                getattr(p, "text", "") for p in resp.candidates[0].content.parts
+                            )
+                        except Exception as e:
+                            last_err = e
+                            raw = ""
 
-            raw = (raw or "").strip()
-            try:
-                payload = _parse_json_loose(raw)
-                # normalizaciones ligeras
-                if isinstance(payload.get("CORREO ELECTRONICO"), str):
-                    payload["CORREO ELECTRONICO"] = payload["CORREO ELECTRONICO"].strip().lower()
-                return payload
-            except Exception as e:
-                last_err = e
-                # pequeño backoff por si el servicio respondió incompleto
-                time.sleep(0.6)
+                    last_raw = raw
+                    raw = (raw or "").strip()
+                    try:
+                        payload = _parse_json_loose(raw)
+                        # normalizaciones ligeras
+                        if isinstance(payload.get("CORREO ELECTRONICO"), str):
+                            payload["CORREO ELECTRONICO"] = payload["CORREO ELECTRONICO"].strip().lower()
+                        if model_try != active_model:
+                            active_model = model_try
+                        return payload
+                    except Exception as e:
+                        last_err = e
+                        if raw:
+                            print(
+                                f"[IA] Respuesta no fue JSON válido (intento {attempt+1}, modelo {model_try}): "
+                                f"{_compact_excerpt(raw)}"
+                            )
+                        # pequeño backoff por si el servicio respondió incompleto
+                        time.sleep(0.6)
+                        break
 
-        # si llegamos aquí, fallaron los 3 intentos → exponemos parte de la salida para depuración
-        raise RuntimeError(f"No se pudo parsear JSON del modelo: {last_err}")
+        # si llegamos aquí, fallaron todos los intentos → exponemos parte de la salida para depuración
+        snippet = f" | fragmento: {_compact_excerpt(last_raw)}" if last_raw else ""
+        raise RuntimeError(f"No se pudo parsear JSON del modelo: {last_err}{snippet}")
 
